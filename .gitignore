@@ -1,0 +1,5 @@
+*.py[cod]
+node_modules
+_build
+.*.swp
+.*.swo

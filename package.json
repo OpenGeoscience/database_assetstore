@@ -1,0 +1,17 @@
+{
+  "name": "db_items",
+  "version": "0.1.0",
+  "description": "A Girder plugin to provide access to database tables via item endpoints.",
+  "homepage": "https://github.com/OpenGeoscience/db_items",
+  "bugs": {
+    "url": "https://github.com/OpenGeoscience/db_items/issues"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OpenGeoscience/db_items.git"
+  },
+  "dependencies": {},
+  "devDependencies": {},
+  "scripts": {}
+}

@@ -1,0 +1,7 @@
+{
+    "name": "Database Items",
+    "description": "Provide database access via items.",
+    "version": "0.1.0",
+    "dependencies": [],
+    "grunt": "Gruntfile.js"
+}
