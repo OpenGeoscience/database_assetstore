@@ -20,11 +20,13 @@
 from girder.constants import AccessType
 from girder.utility.model_importer import ModelImporter
 
-from .rest import DatabaseItemResource
+from .rest import DatabaseItemResource, dbInfoKey
 
 
 def load(info):
     DatabaseItemResource(info['apiRoot'])
 
     ModelImporter.model('item').exposeFields(
-        level=AccessType.ADMIN, fields='databaseMetadata')
+        level=AccessType.ADMIN, fields=dbInfoKey)
+    ModelImporter.model('item').exposeFields(
+        level=AccessType.SITE_ADMIN, fields=dbInfoKey)

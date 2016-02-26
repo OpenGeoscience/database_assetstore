@@ -3,7 +3,7 @@ Database Items |build-status| |license-badge|
 A Girder_ Plugin
 ----------------
 
-A Girder plugin to provide access to database tables via items.
+A Girder plugin to provide access to database tables via extra item endpoints.
 
 .. _Girder: https://github.com/girder/girder
 

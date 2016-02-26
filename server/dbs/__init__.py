@@ -17,6 +17,6 @@
 #  limitations under the License.
 ##############################################################################
 
-from .base import getDBConnectorClass  # noqa
-
+from base import (getDBConnectorClass, getDBConnector,   # noqa
+                  clearDBConnectorCache, FilterOperators)
 import postgres  # noqa
