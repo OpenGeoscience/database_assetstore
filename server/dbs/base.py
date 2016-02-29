@@ -41,6 +41,7 @@ FilterOperators = {
     'lte': 'lte',
     '<=': 'lte',
     'in': 'in',
+    'notin': 'notin',
     'regex': 'regex',
     '~': 'regex',
     'search': 'search',  # case insensitive regex
@@ -51,14 +52,14 @@ FilterOperators = {
     '!~*': 'notsearch',
 }
 DatatypeOperators = {
-    'array': {'in'},
-    'boolean': {'eq', 'ne', 'in'},
-    'date': {'eq', 'ne', 'gte', 'gt', 'lt', 'lte', 'in'},
-    'duration': {'eq', 'ne', 'gte', 'gt', 'lt', 'lte', 'in'},
-    'enum': {'eq', 'ne', 'in'},
-    'number': {'eq', 'ne', 'gte', 'gt', 'lt', 'lte', 'in'},
-    'string': {'eq', 'ne', 'gte', 'gt', 'lt', 'lte', 'in', 'regex', 'search',
-               'notregex', 'notsearch'},
+    'array': {'in', 'notin'},
+    'boolean': {'eq', 'ne', 'in', 'notin'},
+    'date': {'eq', 'ne', 'gte', 'gt', 'lt', 'lte', 'in', 'notin'},
+    'duration': {'eq', 'ne', 'gte', 'gt', 'lt', 'lte', 'in', 'notin'},
+    'enum': {'eq', 'ne', 'in', 'notin'},
+    'number': {'eq', 'ne', 'gte', 'gt', 'lt', 'lte', 'in', 'notin'},
+    'string': {'eq', 'ne', 'gte', 'gt', 'lt', 'lte', 'in', 'notin', 'regex',
+               'notregex', 'search', 'notsearch'},
 }
 
 

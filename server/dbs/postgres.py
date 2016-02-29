@@ -174,6 +174,15 @@ class PostgresConnector(base.DatabaseConnector):
         operator = filter['operator']
         operator = base.FilterOperators.get(operator, operator)
         operator = PostgresOperators.get(operator, operator)
+        if operator in ('in', 'notin'):
+            values = filter['value']
+            if not isinstance(values, (list, tuple)):
+                values = [values]
+            sql = [' AND ', escapeName(filter['field']),
+                   '' if operator == 'in' else ' NOT', ' IN (',
+                   ','.join(['%s' for value in values]), ')']
+            sqlvalues = values
+            return sql, sqlvalues
         sql = [' AND ', escapeName(filter['field']), ' ', operator, ' %s']
         sqlvalues = [filter['value']]
         return sql, sqlvalues
