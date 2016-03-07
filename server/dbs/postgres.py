@@ -293,6 +293,13 @@ class PostgresConnector(base.DatabaseConnector):
                     'client': client,
                     'time': time.time()
                 })
+        # This is equivalent to "set default_transaction_read_only=on;".  It
+        # isn't a real guard against change, as if we could allow an injection
+        # attack, it could be turned off.  Also, volatile functions can still
+        # have side effects (for instance, setseed() changes the state for
+        # generating random numbers which could have cryptographic
+        # implications).
+        db.set_session(readlonly=True)
         return db
 
     def disconnect(self, db, client=None):
