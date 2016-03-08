@@ -125,6 +125,10 @@ def getDBConnector(id, dbinfo):
     return _connectorCache[id]
 
 
+class DatabaseConnectorException(Exception):
+    pass
+
+
 class DatabaseConnector(object):
     def __init__(self, *args, **kwargs):
         self.initialized = False

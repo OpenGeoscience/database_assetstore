@@ -26,6 +26,7 @@ from six.moves import range
 from girder import logger as log
 
 from . import base
+from .base import DatabaseConnectorException
 
 
 DatabaseOperators = {
@@ -129,10 +130,10 @@ class SQLAlchemyConnector(base.DatabaseConnector):
             return fieldOrFunction['value']
         fieldOrFunction = self.isFunction(fieldOrFunction)
         if fieldOrFunction is False:
-            raise Exception('Not a function')
+            raise DatabaseConnectorException('Not a function')
         if not self._isFunctionAllowed(fieldOrFunction['func']):
-            raise Exception('Function %s is not allowed' %
-                            fieldOrFunction['func'])
+            raise DatabaseConnectorException('Function %s is not allowed' %
+                                             fieldOrFunction['func'])
         return getattr(sqlalchemy.func, fieldOrFunction['func'])(
             *[self._convertFieldOrFunction(entry, True) for entry in
               fieldOrFunction['param']])

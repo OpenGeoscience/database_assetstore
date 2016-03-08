@@ -28,7 +28,7 @@ module.exports = function (grunt) {
             girder_db_items: {
                 root: '<%= pluginDir %>/girder_db_items',
                 static: '<%= staticDir %>/built/plugins/girder_db_items'
-                //node_modules: '<%= plugin.db_items.root %>/node_modules'
+                // node_modules: '<%= plugin.girder_db_items.root %>/node_modules'
             }
         }
     });

@@ -1,19 +1,19 @@
 $(function () {
     girderTest.addCoveredScripts([
     /*
-        '/static/built/plugins/db_items/templates.js',
-        '/plugins/db_items/web_client/js/imageViewerSelectWidget.js',
-        '/plugins/db_items/web_client/js/imageViewerWidget/base.js',
-        '/plugins/db_items/web_client/js/imageViewerWidget/geojs.js',
-        '/plugins/db_items/web_client/js/imageViewerWidget/leaflet.js',
-        '/plugins/db_items/web_client/js/imageViewerWidget/openlayers.js',
-        '/plugins/db_items/web_client/js/imageViewerWidget/openseadragon.js',
-        '/plugins/db_items/web_client/js/imageViewerWidget/slideatlas.js'
+        '/static/built/plugins/girder_db_items/templates.js',
+        '/plugins/girder_db_items/web_client/js/imageViewerSelectWidget.js',
+        '/plugins/girder_db_items/web_client/js/imageViewerWidget/base.js',
+        '/plugins/girder_db_items/web_client/js/imageViewerWidget/geojs.js',
+        '/plugins/girder_db_items/web_client/js/imageViewerWidget/leaflet.js',
+        '/plugins/girder_db_items/web_client/js/imageViewerWidget/openlayers.js',
+        '/plugins/girder_db_items/web_client/js/imageViewerWidget/openseadragon.js',
+        '/plugins/girder_db_items/web_client/js/imageViewerWidget/slideatlas.js'
     */
     ]);
 
     girderTest.importStylesheet(
-        '/static/built/plugins/db_items/plugin.min.css'
+        '/static/built/plugins/girder_db_items/plugin.min.css'
     );
 
     girder.events.trigger('g:appload.before');

@@ -30,7 +30,7 @@ config.loadConfig()  # Must reload config to pickup correct port
 
 
 def setUpModule():
-    base.enabledPlugins.append('db_items')
+    base.enabledPlugins.append('girder_db_items')
     base.startServer(False)
 
 

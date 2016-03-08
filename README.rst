@@ -17,8 +17,8 @@ The `GET` `item/{id}/database/select endpoint` performs queries and returns data
 
 .. _Girder: https://github.com/girder/girder
 
-.. |build-status| image:: https://travis-ci.org/OpenGeoscience/db_items.svg?branch=master
-    :target: https://travis-ci.org/OpenGeoscience/db_items
+.. |build-status| image:: https://travis-ci.org/OpenGeoscience/girder_db_items.svg?branch=master
+    :target: https://travis-ci.org/OpenGeoscience/girder_db_items
     :alt: Build Status
 
 .. |license-badge| image:: https://raw.githubusercontent.com/girder/girder/master/docs/license.png

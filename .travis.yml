@@ -41,7 +41,7 @@ before_install:
 install:
     - cd $girder_path
     - pip install -U -r requirements.txt -r requirements-dev.txt -r $main_path/requirements.txt -e .
-    - npm install
+    - npm install || npm install
 
 script:
     - cd $build_path/girder_testing_build
