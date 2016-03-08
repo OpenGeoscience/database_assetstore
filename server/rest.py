@@ -102,7 +102,9 @@ def getFieldsList(conn, fields=None, fieldsValue=None):
             raise RestException('The fields parameter must be a JSON list or '
                                 'a comma-separated list of known field names.')
     for field in fieldsList:
-        if not conn.isField(field, fields):
+        if not conn.isField(
+                field, fields,
+                allowFunc=getattr(conn, 'allowFieldFunctions', False)):
             raise RestException('Fields must use known fields %r.')
     return fieldsList
 
@@ -138,13 +140,19 @@ def getSortList(conn, fields=None, sortValue=None, sortDir=None):
         sort = []
         for entry in sortList:
             if (isinstance(entry, list) and 1 <= len(entry) <= 2 and
-                    conn.isField(entry[0]) is not False):
+                    conn.isField(
+                        entry[0], fields,
+                        allowFunc=getattr(conn, 'allowSortFunctions', False))
+                    is not False):
                 sort.append((
                     entry[0],
                     -1 if len(entry) > 1 and entry[1] in
                     (-1, '-1', 'desc', 'DESC') else 1
                 ))
-            elif conn.isField(entry, fields) is not False:
+            elif (conn.isField(
+                    entry, fields,
+                    allowFunc=getattr(conn, 'allowSortFunctions', False))
+                    is not False):
                 sort.append((entry, 1))
             else:
                 sort = None
@@ -181,7 +189,19 @@ def validateFilter(conn, fields, filter):
         raise RestException('Unknown filter operator %r' % filter.get(
             'operator'))
     filter['operator'] = dbs.FilterOperators[filter.get('operator')]
-    if not conn.isField(filter.get('field'), fields):
+    if 'field' not in filter and 'func' in filter:
+        filter['field'] = {
+            'func': filter['func'],
+            'param': filter.get('param')
+        }
+    if 'value' not in filter and 'rfunc' in filter:
+        filter['value'] = {
+            'func': filter['rfunc'],
+            'param': filter.get('rparam')
+        }
+    if not conn.isField(
+            filter['field'], fields,
+            allowFunc=getattr(conn, 'allowFilterFunctions', False)):
         raise RestException('Filters must be on known fields.')
     if not filter.get('value'):
         filter['value'] = None
@@ -315,7 +335,11 @@ class DatabaseItemResource(Item):
                'Ignored if sort is unspecified or is a JSON list.',
                required=False, dataType='int')
         .param('fields', 'A comma-separated or JSON list of fields (column '
-               'names) to return (default is all fields).', required=False)
+               'names) to return (default is all fields).  If a JSON list is '
+               'used, instead of a plain string, a field may be a dictionary '
+               'with a function definition and an optional "reference" entry '
+               'which is used to identify the resultant column.',
+               required=False)
         .param('format', 'The format to return the data (default is '
                'list).', required=False, enum=['list', 'dict'])
         .param('clientid', 'A string to use for a client id.  If specified '
@@ -341,11 +365,20 @@ class DatabaseItemResource(Item):
                'and "function" keys can also be added.', required=False)
         .notes('Instead of or in addition to specifying a filters parameter, '
                'additional query parameters of the form (field)[_(operator)]='
-               '(value) can be used.  Operators depend on the data type of '
-               'the field, and include = (no operator or eq), != (<>, ne), >= '
-               '(min, gte), <= (lte), > (gt), < (max, lt), in, ~ (regex), ~* '
-               '(search -- typically a case insensitive regex or word-stem '
-               'search), !~ (notregex), !~* (notsearch).')
+               '(value) can be used.  '
+               'Operators depend on the data type of the field, and include = '
+               '(no operator or eq), != (<>, ne), >= (min, gte), <= (lte), > '
+               '(gt), < (max, lt), in, notin, ~ (regex), ~* (search -- '
+               'typically a case insensitive regex or word-stem search), !~ '
+               '(notregex), !~* (notsearch).  '
+               'If the backing database connector supports it, any place a '
+               'field can be used can be replaced with a function reference.  '
+               'This is a dictionary with "func" or with the name of the '
+               'database function and "params" which is a list of values, '
+               'fields, or functions to pass to the function.  If the param '
+               'entry is not a dictionary, it is treated as a value.  If a '
+               'dictionary, it can contain "value", "field", or "func" and '
+               '"param".')
         .errorResponse('ID was invalid.')
         .errorResponse('Read access was denied for the item.', 403)
         .errorResponse('Item is not a database link.')
@@ -396,8 +429,11 @@ class DatabaseItemResource(Item):
             cherrypy.response.status = 500
             return
         if 'fields' in result:
-            result['columns'] = {result['fields'][col]: col for col in
-                                 range(len(result['fields']))}
+            result['columns'] = {
+                result['fields'][col] if not isinstance(
+                    result['fields'][col], dict) else
+                result['fields'][col].get('reference', 'column_' + str(col)):
+                col for col in range(len(result['fields']))}
         result['datacount'] = len(result.get('data', []))
         result['format'] = 'list'
         if format == 'dict':

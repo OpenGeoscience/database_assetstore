@@ -20,3 +20,4 @@
 from base import (getDBConnectorClass, getDBConnector,   # noqa
                   clearDBConnectorCache, FilterOperators)
 import postgres  # noqa
+import postgres_sqlalchemy  # noqa

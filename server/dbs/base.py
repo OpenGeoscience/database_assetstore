@@ -41,15 +41,22 @@ FilterOperators = {
     'lte': 'lte',
     '<=': 'lte',
     'in': 'in',
-    'notin': 'notin',
+    'not_in': 'not_in',
+    'notin': 'not_in',
     'regex': 'regex',
     '~': 'regex',
     'search': 'search',  # case insensitive regex
     '~*': 'search',
-    'notregex': 'notregex',
-    '!~': 'notregex',
-    'notsearch': 'notsearch',
-    '!~*': 'notsearch',
+    'not_regex': 'not_regex',
+    'notregex': 'not_regex',
+    '!~': 'not_regex',
+    'notsearch': 'not_search',
+    'notsearch': 'not_search',
+    '!~*': 'not_search',
+    'is': 'is',
+    'not_is': 'not_is',
+    'notis': 'not_is',
+    'isnot': 'not_is',
 }
 DatatypeOperators = {
     'array': {'in', 'notin'},
@@ -121,6 +128,9 @@ def getDBConnector(id, dbinfo):
 class DatabaseConnector(object):
     def __init__(self, *args, **kwargs):
         self.initialized = False
+        self.allowFieldFunctions = False
+        self.allowSortFunctions = False
+        self.allowFilterFunctions = False
 
     def checkOperatorDatatype(self, field, operator, fieldList=None):
         """
@@ -153,23 +163,79 @@ class DatabaseConnector(object):
         """
         return []
 
-    def isField(self, name, fields=None):
+    def isField(self, name, fields=None, allowFunc=False):
         """
         Check if a specified name is a valid field.  If so, return the
         canonical field name.
 
-        :param name: the name to check.
+        :param name: the name to check.  This can also be a dictionary with
+                     'field' or ('func' and optionally 'param').
         :param fields: the results from getFieldInfo.  If None, this calls
                        getFieldInfo.
+        :param allowFunc: if True, also allow left functions.
         :return: False if this is not a known field, otherwise the cannonical
                  field name.
         """
         if fields is None:
             fields = self.getFieldInfo()
+        if isinstance(name, dict):
+            if 'field' in name:
+                name = name['field']
+            elif 'name' in name:
+                name = name['field']
+            elif ('func' in name or 'lfunc' in name) and allowFunc:
+                return self.isFunction(name, fields) is not False
+            else:
+                return False
         for field in fields:
             if name == field.get('name'):
                 return True
         return False
+
+    def isFunction(self, func, fields=None):
+        """
+        Check if the specified object is a well-formed function reference.  If
+        it is, return a canonical form.  Functions are dictionaries with at
+        least a 'func' or 'lfunc' in the dictionary for left values and 'rfunc'
+        for right values.  Functions optionally have a corresponding
+        '(l|r|)param' key which contains either a single value or a list.  Each
+        entry in the list contains a value or a dictionary, where the
+        dictionary contains either another left function, a 'field' parameter,
+        or a 'value' parameter.  In the canonical form, this is always a
+        dictionary with 'func' and 'param', param is always a list, and the
+        list always contains dictionaries.
+
+        :param func: a dictionary containing the function specification.
+        :param fields: the results from getFieldInfo.  If None, this calls
+                       getFieldInfo.
+        :returns: False if func is not a function specification, otherwise the
+                  canonical function dictionary.
+        """
+        if not isinstance(func, dict):
+            return False
+        result = {
+            'func': func['func'],
+            'param': []
+        }
+        param = func.get('param', [])
+        if not isinstance(param, (list, tuple)):
+            param = [param]
+        for entry in param:
+            if not isinstance(entry, dict):
+                entry = {'value': entry}
+            else:
+                if 'value' in entry:
+                    entry = {'value': entry['value']}
+                elif 'field' in entry or 'name' in entry:
+                    if not self.isField(entry.get('field', entry.get('name'))):
+                        return False
+                    entry = {'field': entry.get('field', entry.get('name'))}
+                else:
+                    entry = self.isFunction(entry)
+                    if entry is False:
+                        return False
+            result['param'].append(entry)
+        return result
 
     def performSelect(self, fields=None, queryProps={}, filters=[],
                       client=None, queryInfo=None):
