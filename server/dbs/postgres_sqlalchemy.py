@@ -94,6 +94,7 @@ class PostgresSAConnector(base.DatabaseConnector):
             pass
 
         self.tableClass = Table
+        self._allowedFunctions = None
 
     def _applyFilter(self, query, filter):
         """
@@ -149,9 +150,30 @@ class PostgresSAConnector(base.DatabaseConnector):
         fieldOrFunction = self.isFunction(fieldOrFunction)
         if fieldOrFunction is False:
             raise Exception('Not a function')
+        if not self._isFunctionAllowed(fieldOrFunction['func']):
+            raise Exception('Function %s is not allowed' %
+                            fieldOrFunction['func'])
         return getattr(sqlalchemy.func, fieldOrFunction['func'])(
             *[self._convertFieldOrFunction(entry, True) for entry in
               fieldOrFunction['param']])
+
+    def _isFunctionAllowed(self, proname):
+        """
+        Check if the specified function is allowed.  Currently, only
+        non-volatile functions are allowed, even though there are volatile
+        functions that are harmless.
+
+        :param proname: name of the function to check.
+        :returns: True is allowed, False is not.
+        """
+        if not self._allowedFunctions:
+            db = self.connect()
+            funcs = db.execute(
+                'SELECT proname, provolatile FROM pg_proc;').fetchall()
+            self.disconnect(db)
+            self._allowedFunctions = {func[0]: func[1] in ('i', 's')
+                                      for func in funcs}
+        return self._allowedFunctions.get(proname, False)
 
     def connect(self, client=None):
         """
