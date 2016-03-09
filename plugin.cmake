@@ -28,5 +28,5 @@ add_eslint_test(
   "${CMAKE_CURRENT_LIST_DIR}/web_client"
 )
 
-add_python_test(example PLUGIN girder_db_items BIND_SERVER)
+add_python_test(item PLUGIN girder_db_items BIND_SERVER EXTERNAL_DATA "testdb.sql.gz" "plugins/girder_db_items/testdb.sql.gz")
 add_web_client_test(example "${CMAKE_CURRENT_LIST_DIR}/plugin_tests/exampleSpec.js" PLUGIN girder_db_items)

@@ -280,7 +280,6 @@ class DatabaseItemResource(Item):
             raise RestException('Unknown database type.')
         if not connClass.validate(**dbinfo):
             raise RestException('Database information is invalid.')
-        # ##DWM:: check if the database is reachable, and warn if it isn't?
         return self.model('item').save(item)
 
     @describeRoute(
@@ -288,7 +287,7 @@ class DatabaseItemResource(Item):
         .param('id', 'The ID of the item.', paramType='path')
     )
     @access.user
-    @loadmodel(model='item', map={'id': 'item'}, level=AccessType.WRITE)
+    @loadmodel(model='item', map={'id': 'item'}, level=AccessType.ADMIN)
     def deleteDatabaseLink(self, item, params):
         dbs.clearDBConnectorCache(item['_id'])
         deleted = False
@@ -320,7 +319,6 @@ class DatabaseItemResource(Item):
         if not conn:
             raise RestException('Failed to connect to database.')
         fields = conn.getFieldInfo()
-        # ##DWM:: filter based on user?
         return fields
 
     @describeRoute(
@@ -340,7 +338,9 @@ class DatabaseItemResource(Item):
         if not dbinfo:
             raise RestException('Item is not a database link.')
         result = dbs.clearDBConnectorCache(item['_id'])
-        return result
+        return {
+            'refreshed': result
+        }
 
     @describeRoute(
         Description('Get data from a database link.')

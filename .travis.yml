@@ -12,6 +12,12 @@ sudo: false
 compiler:
     - gcc
 
+addons:
+    postgresql: "9.4"
+
+services:
+    - postgresql
+
 before_install:
     - main_path=$PWD
     - build_path=$PWD/build
@@ -44,9 +50,23 @@ install:
     - pip install -U -r requirements.txt -r requirements-dev.txt -r $main_path/requirements.txt -e .
     - npm install
 
+before_script:
+    - psql -U postgres -c 'CREATE EXTENSION postgis;'
+    - psql -U postgres -c 'CREATE EXTENSION postgis_topology;'
+    - psql -U postgres -c 'CREATE EXTENSION postgis_sfcgal;' || true
+    - psql -U postgres -c 'CREATE EXTENSION fuzzystrmatch;'
+    - psql -U postgres -c 'CREATE EXTENSION address_standardizer;' || true
+    - psql -U postgres -c 'CREATE EXTENSION address_standardizer_data_us;' || true
+    - psql -U postgres -c 'CREATE EXTENSION postgis_tiger_geocoder;'
+    - psql -U postgres -c 'CREATE EXTENSION pgrouting;' || true
+    - psql -U postgres -c 'CREATE EXTENSION ogr_fdw;' || true
+    - psql -U postgres -c 'create database sampledb;'
+
 script:
     - mkdir -p $build_path/girder_testing_build
     - cd $build_path/girder_testing_build
-    - cmake -DPYTHON_COVERAGE:BOOL=${PY_COVG} -DPYTHON_VERSION:STRING=${TRAVIS_PYTHON_VERSION} -DCOVERAGE_MINIMUM_PASS=20 $girder_path
+    - cmake -DPYTHON_COVERAGE:BOOL=${PY_COVG} -DPYTHON_VERSION:STRING=${TRAVIS_PYTHON_VERSION} -DCOVERAGE_MINIMUM_PASS=30 $girder_path
     - make
+    - gunzip -c data/plugins/girder_db_items/testdb.sql.gz | psql -U postgres sampledb
+    - psql -U postgres -h 127.0.0.1 sampledb -c "SELECT table_name FROM information_schema.tables WHERE table_type='BASE TABLE' and table_schema='public' order by table_name"
     - JASMINE_TIMEOUT=15000 ctest -VV -R '(coverage_reset|py_coverage_combine|girder_db_items|py_coverage$|py_coverage_xml)'
