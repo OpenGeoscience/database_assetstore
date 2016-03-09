@@ -46,13 +46,14 @@ class PostgresSAConnector(SQLAlchemyConnector):
         #   current/static/libpq-connect.html#LIBPQ-PARAMKEYWORDS
         self.databaseOperators = PostgresOperators
 
-    def _isFunctionAllowed(self, proname):
+    def _isFunctionAllowed(self, funcname):
         """
         Check if the specified function is allowed.  Currently, only
         non-volatile functions are allowed, even though there are volatile
-        functions that are harmless.
+        functions that are harmless.  We also prohibit pg_* and _* functions,
+        since those are likely to be internal functions.
 
-        :param proname: name of the function to check.
+        :param funcname: name of the function to check.
         :returns: True is allowed, False is not.
         """
         if not self._allowedFunctions or not len(self._allowedFunctions):
@@ -65,7 +66,7 @@ class PostgresSAConnector(SQLAlchemyConnector):
                           not func[0].startswith('pg_') and
                           not func[0].startswith('_'))
                 for func in funcs}
-        return self._allowedFunctions.get(proname.lower(), False)
+        return self._allowedFunctions.get(funcname.lower(), False)
 
 
 base.registerConnectorClass(PostgresSAConnector.name, PostgresSAConnector)

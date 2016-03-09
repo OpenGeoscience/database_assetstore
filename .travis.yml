@@ -19,7 +19,8 @@ before_install:
 
     - girder_path=$build_path/girder
     - rm -fr $girder_path
-    - git clone https://github.com/girder/girder.git $girder_path && git -C $girder_path checkout 19789d217f0615ddcd7cba0552fc3b57dee86182
+    # We use the current girder master
+    - git clone https://github.com/girder/girder.git $girder_path
     - ln -sf $main_path $girder_path/plugins/
     - ls -l $girder_path/plugins
 
@@ -44,7 +45,8 @@ install:
     - npm install || npm install
 
 script:
+    - mkdir -p $build_path/girder_testing_build
     - cd $build_path/girder_testing_build
-    - cmake -DPYTHON_COVERAGE:BOOL=${PY_COVG} -DPYTHON_VERSION:STRING=${TRAVIS_PYTHON_VERSION} $girder_path
+    - cmake -DPYTHON_COVERAGE:BOOL=${PY_COVG} -DPYTHON_VERSION:STRING=${TRAVIS_PYTHON_VERSION} -DCOVERAGE_MINIMUM_PASS=20 $girder_path
     - make
-    - JASMINE_TIMEOUT=15000 ctest -VV -R db_item
+    - JASMINE_TIMEOUT=15000 ctest -VV -R '(coverage_reset|py_coverage_combine|girder_db_items|py_coverage$|py_coverage_xml)'
