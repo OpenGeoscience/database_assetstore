@@ -227,6 +227,8 @@ class DatabaseItemResource(Item):
                            self.deleteDatabaseLink)
         apiRoot.item.route('GET', (':id', 'database', 'fields'),
                            self.getDatabaseFields)
+        apiRoot.item.route('PUT', (':id', 'database', 'refresh'),
+                           self.databaseRefresh)
         apiRoot.item.route('GET', (':id', 'database', 'select'),
                            self.databaseSelect)
 
@@ -320,6 +322,26 @@ class DatabaseItemResource(Item):
         fields = conn.getFieldInfo()
         # ##DWM:: filter based on user?
         return fields
+
+    @describeRoute(
+        Description('Refresh data associated with an item database link.')
+        .param('id', 'The ID of the item.', paramType='path')
+        .notes('This may be necessary if fields (columns) within the linked '
+               'table are added, dropped, or changed, or if the available '
+               'database functions are altered.')
+        .errorResponse('ID was invalid.')
+        .errorResponse('Read access was denied for the item.', 403)
+        .errorResponse('Item is not a database link.')
+    )
+    @access.cookie
+    @access.public
+    @loadmodel(model='item', map={'id': 'item'}, level=AccessType.READ)
+    def databaseRefresh(self, item, params):
+        dbinfo = item.get(dbInfoKey)
+        if not dbinfo:
+            raise RestException('Item is not a database link.')
+        result = dbs.clearDBConnectorCache(item['_id'])
+        return result
 
     @describeRoute(
         Description('Get data from a database link.')

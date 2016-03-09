@@ -101,6 +101,8 @@ def clearDBConnectorCache(id):
     id = str(id)
     if id in _connectorCache:
         del _connectorCache[id]
+        return True
+    return False
 
 
 def getDBConnector(id, dbinfo):
