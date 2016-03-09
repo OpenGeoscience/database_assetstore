@@ -333,7 +333,6 @@ class DatabaseItemResource(Item):
         .errorResponse('Read access was denied for the item.', 403)
         .errorResponse('Item is not a database link.')
     )
-    @access.cookie
     @access.public
     @loadmodel(model='item', map={'id': 'item'}, level=AccessType.READ)
     def databaseRefresh(self, item, params):

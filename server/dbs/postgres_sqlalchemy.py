@@ -36,7 +36,7 @@ PostgresOperators = {
 
 
 class PostgresSAConnector(SQLAlchemyConnector):
-    name = 'postgres_sqlalchemy'
+    name = 'sqlalchemy_postgres'
 
     def __init__(self, *args, **kwargs):
         super(PostgresSAConnector, self).__init__(*args, **kwargs)

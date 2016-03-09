@@ -24,7 +24,7 @@ before_install:
     - ln -sf $main_path $girder_path/plugins/
     - ls -l $girder_path/plugins
 
-    - export MONGO_VERSION=2.6.11
+    - export MONGO_VERSION=3.0.7
     - export PY_COVG="ON"
     - CACHE=$HOME/.cache source $girder_path/scripts/install_mongo.sh
     - mkdir /tmp/db
@@ -42,7 +42,7 @@ before_install:
 install:
     - cd $girder_path
     - pip install -U -r requirements.txt -r requirements-dev.txt -r $main_path/requirements.txt -e .
-    - npm install || npm install
+    - npm install
 
 script:
     - mkdir -p $build_path/girder_testing_build
