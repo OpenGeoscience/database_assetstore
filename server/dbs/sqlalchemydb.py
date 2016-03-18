@@ -165,7 +165,22 @@ class SQLAlchemyConnector(base.DatabaseConnector):
             metadata = sqlalchemy.MetaData(self.dbEngine)
             table = sqlalchemy.Table(self.table, metadata, schema=self.schema,
                                      autoload=True)
-            sqlalchemy.orm.mapper(self.tableClass, table)
+
+            # The orm.mapper is used to refer to our columns.  If the table or
+            # view we are connecting to does not have any primary keys, the
+            # mapper will fail.  Use the first column as a fallback; this is
+            # only safe because we DON'T alter data; we have no guarantee we
+            # can refer to a specific row (but we don't need to).
+            fallbackPrimaryCol = None
+            for col in table.c:
+                if col.primary_key:
+                    fallbackPrimaryCol = None
+                    break
+                if fallbackPrimaryCol is None:
+                    fallbackPrimaryCol = col
+
+            sqlalchemy.orm.mapper(
+                self.tableClass, table, primary_key=fallbackPrimaryCol)
         # If we are asking for a specific client, clean up defunct clients
         curtime = time.time()
         if client:

@@ -339,11 +339,15 @@ class ItemTest(base.TestCase):
             itemId, ), user=self.user, params=params)
         self.assertStatus(resp, 400)
         self.assertIn('must be a JSON list', resp.json['message'])
+        params['sort'] = 'unknownfield'
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatus(resp, 400)
+        self.assertIn('must use known fields', resp.json['message'])
 
-        # test sort with bad JSON, unknown field
+    # test fields, fields with functions
 
-    # test fields, fields with functions, filter, filter via params, filter
-    # with functions, operators per datatypes
+    # filter, filter via params, filter with functions, operators per datatypes
 
     # test polling (possibly with subclasses connector so we don't need an
     # actual database)

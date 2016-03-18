@@ -68,5 +68,5 @@ script:
     - cmake -DPYTHON_COVERAGE:BOOL=${PY_COVG} -DPYTHON_VERSION:STRING=${TRAVIS_PYTHON_VERSION} -DCOVERAGE_MINIMUM_PASS=30 $girder_path
     - make
     - gunzip -c data/plugins/girder_db_items/testdb.sql.gz | psql -U postgres sampledb
-    - psql -U postgres -h 127.0.0.1 sampledb -c "SELECT table_name FROM information_schema.tables WHERE table_type='BASE TABLE' and table_schema='public' order by table_name"
+    - psql -U postgres -h 127.0.0.1 sampledb -c "SELECT table_type,table_name FROM information_schema.tables WHERE table_schema='public' order by table_name"
     - JASMINE_TIMEOUT=15000 ctest -VV -R '(coverage_reset|py_coverage_combine|girder_db_items|py_coverage$|py_coverage_xml)'
