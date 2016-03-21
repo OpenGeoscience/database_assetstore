@@ -185,6 +185,7 @@ class ItemTest(base.TestCase):
         self.assertEqual(res['data'], [])
         self.assertEqual(res['fields'], [])
         self.assertFalse(conn.validate())
+        self.assertTrue(conn.checkOperatorDatatype('unknown', 'unknown'))
 
     def testItemDatabaseFields(self):
         itemId = str(self.item1['_id'])
@@ -456,11 +457,260 @@ class ItemTest(base.TestCase):
         self.assertStatusOk(resp)
         self.assertEqual(resp.json['fields'], json.loads(params['fields']))
         self.assertEqual(resp.json['columns'], {'town': 0, 'popmod': 1})
+        # Test some function handling
+        params['sort'] = 'town'
+        params['fields'] = json.dumps([
+            {'func': 'lower', 'param': {'field': 'town'}}
+        ])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 5)
+        self.assertEqual(resp.json['data'][0][0], 'abington')
+        # This uses 'town' as a value in the first field, not a field
+        params['fields'] = json.dumps([
+            {'func': 'lower', 'param': 'town'},
+            'town'
+        ])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 5)
+        self.assertEqual(resp.json['data'][0][0], 'town')
+        # Function parameters must be fields, values, or otehr functions
+        params['fields'] = json.dumps([
+            {'func': 'lower', 'param': {'unknown': 'town'}}
+        ])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatus(resp, 400)
+        self.assertIn('must use known fields', resp.json['message'])
+        # Fields in functions must exist
+        params['fields'] = json.dumps([
+            {'func': 'lower', 'param': {'field': 'unknown'}}
+        ])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatus(resp, 400)
+        self.assertIn('must use known fields', resp.json['message'])
+        # We don't have to use a function
+        params['fields'] = json.dumps([{'field': 'town'}])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 5)
+        self.assertEqual(resp.json['data'][0][0], 'ABINGTON')
+        # But it needs to be a field or a function
+        params['fields'] = json.dumps([{'unknown': 'town'}])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatus(resp, 400)
+        self.assertIn('must use known fields', resp.json['message'])
 
-    # filter, filter via params, filter with functions, operators per datatypes
+    def testItemDatabaseSelectFilterViaParams(self):
+        itemId, itemId2 = self._setupDbItems()
+        # We can access filters either via the filter parameter or via the name
+        # of each field optionally suffixed with different operators.
+        baseParams = {'limit': 5, 'sort': 'town', 'fields': 'town'}
+        # Exact match
+        params = dict(baseParams.items() + {'town': 'BOSTON'}.items())
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 1)
+        self.assertEqual(resp.json['data'][0][0], 'BOSTON')
+        params = dict(baseParams.items() + {'town': 'boston'}.items())
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 0)
+        # minimum
+        params = dict(baseParams.items() + {'town_min': 'BOS'}.items())
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 5)
+        self.assertEqual(resp.json['data'][0][0], 'BOSTON')
+        # search
+        params = dict(baseParams.items() + {'town_search': '^bo.*n$'}.items())
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 3)
+        self.assertEqual(resp.json['data'][1][0], 'BOSTON')
+        # compound
+        params = dict(baseParams.items() + {
+            'town_min': 'BOS',
+            'town_notsearch': '^bo.*n$'
+        }.items())
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 5)
+        self.assertNotEqual(resp.json['data'][0][0], 'BOSTON')
+        # numeric comparisons are sent as text
+        params = dict(baseParams.items() + {'pop2010_min': '150000'}.items())
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 3)
+        self.assertEqual(resp.json['data'][0][0], 'BOSTON')
+        # you can't use regex or search on numeric types
+        params = dict(baseParams.items() + {'pop2010_search': '150000'}.items())
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatus(resp, 400)
+        self.assertIn('Cannot use search operator on field',
+                      resp.json['message'])
+        # We should be able to get the same results regardless of whether we
+        # use not or not_
+        params = dict(baseParams.items() + {
+            'town_min': 'BOS',
+            'town_notin': 'BOSTON'
+        }.items())
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 5)
+        self.assertEqual(resp.json['data'][0][0], 'BOURNE')
+        params = dict(baseParams.items() + {
+            'town_min': 'BOS',
+            'town_not_in': 'BOSTON'
+        }.items())
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 5)
+        self.assertEqual(resp.json['data'][0][0], 'BOURNE')
 
-    # test polling (possibly with subclasses connector so we don't need an
-    # actual database)
+    def testItemDatabaseSelectFilters(self):
+        itemId, itemId2 = self._setupDbItems()
+        params = {'limit': 5, 'sort': 'town', 'fields': 'town'}
+        params['filters'] = '[not json'
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatus(resp, 400)
+        self.assertIn('must be a JSON list', resp.json['message'])
+        params['filters'] = json.dumps({'town': 'BOSTON'})
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatus(resp, 400)
+        self.assertIn('must be a JSON list', resp.json['message'])
+        params['filters'] = json.dumps([{'town': 'BOSTON'}])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatus(resp, 400)
+        self.assertIn('must specify a field or func', resp.json['message'])
+        params['filters'] = json.dumps([{'field': 'town', 'value': 'BOSTON'}])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 1)
+        self.assertEqual(resp.json['data'][0][0], 'BOSTON')
+        # test operators
+        params['filters'] = json.dumps([{
+            'field': 'town', 'operator': '>=', 'value': 'BOS'}])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 5)
+        self.assertEqual(resp.json['data'][0][0], 'BOSTON')
+        params['filters'] = json.dumps([{
+            'field': 'town', 'operator': 'gt', 'value': 'BOS'}])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 5)
+        self.assertEqual(resp.json['data'][0][0], 'BOSTON')
+        params['filters'] = json.dumps([{
+            'field': 'town', 'operator': 'noop', 'value': 'BOS'}])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatus(resp, 400)
+        self.assertIn('Unknown filter operator', resp.json['message'])
+        # Functions must be known
+        params['filters'] = json.dumps([{
+            'field': 'town', 'value': {'func': 'unknown', 'params': []}
+        }])
+        with self.assertRaises(Exception):
+            resp = self.request(path='/item/%s/database/select' % (
+                itemId, ), user=self.user, params=params)
+        # We throw a different error when params is an empty dict
+        params['filters'] = json.dumps([{
+            'field': 'town', 'value': {'func': 'unknown', 'param': {}}}])
+        with self.assertRaises(Exception):
+            resp = self.request(path='/item/%s/database/select' % (
+                itemId, ), user=self.user, params=params)
+        # Test a filter composed of a list
+        params['filters'] = json.dumps([['town', 'gt', 'BOS']])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 5)
+        self.assertEqual(resp.json['data'][0][0], 'BOSTON')
+        params['filters'] = json.dumps([['town', 'BOSTON']])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 1)
+        self.assertEqual(resp.json['data'][0][0], 'BOSTON')
+        params['filters'] = json.dumps([['town', 'gt', 'BOSTON', 'extra']])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatus(resp, 400)
+        self.assertIn('must have two or three components',
+                      resp.json['message'])
+        # Fail on an unknown field
+        params['filters'] = json.dumps([['unknown', 'BOSTON']])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatus(resp, 400)
+        self.assertIn('Filters must be on known fields', resp.json['message'])
+        # Fail without a value
+        params['filters'] = json.dumps([{
+            'field': 'town'}])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatus(resp, 400)
+        self.assertIn('must have a value or rfunc', resp.json['message'])
+        # Test a right function
+        params['filters'] = json.dumps([{
+            'field': 'town', 'rfunc': 'upper', 'rparam': 'boston'}])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertEqual(len(resp.json['data']), 1)
+        self.assertEqual(resp.json['data'][0][0], 'BOSTON')
+        # This must not work on item2
+        with self.assertRaises(Exception):
+            resp = self.request(path='/item/%s/database/select' % (
+                itemId2, ), user=self.user, params=params)
+        # Test a set of nested functions
+        filters = [{
+            'func': 'st_intersects',
+            'param': [{
+                'func': 'st_setsrid',
+                'param': [{
+                    'func': 'st_makepoint',
+                    'param': [-72, 42.3601]
+                }, 4326]
+            }, {
+                'func': 'st_transform',
+                'param': [{
+                    'field': 'geom'
+                }, 4326]
+            }],
+            'operator': 'is',
+            'value': True
+        }]
+        params['filters'] = json.dumps(filters)
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 1)
+        self.assertEqual(resp.json['data'][0][0], 'RUTLAND')
+
+    # test polling (use subclassed connector so we don't need an actual
+    # database)
 
     # test client and cancelling queries
 

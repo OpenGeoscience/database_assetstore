@@ -36,7 +36,7 @@ from . import dbs
 dbInfoKey = 'databaseMetadata'
 
 
-def getFilters(conn, fields=None, filtersValue=None, queryParams={},
+def getFilters(conn, fields, filtersValue=None, queryParams={},
                reservedParameters=[]):
     """
     Get a set of filters from a JSON list and/or from a set of query
@@ -44,16 +44,13 @@ def getFilters(conn, fields=None, filtersValue=None, queryParams={},
     the entire name is not in the reserver parameter list are processed.
 
     :param conn: the database connector.  Used for validating fields.
-    :param fields: a list of known fields.  None to let the connector fetch
-                   them.
+    :param fields: a list of known fields.  This is conn.getFieldInfo().
     :filtersValue: a JSON object with the desired filters or None or empty
                    string.
     :queryParameters: a dictionary of query parameters that can add additional
                       filters.
     :reservedParameters: a list or set of reserver parameter names.
     """
-    if not fields:
-        fields = conn.getFieldInfo()
     filters = []
     if filtersValue not in (None, ''):
         try:
@@ -177,7 +174,7 @@ def validateFilter(conn, fields, filter):
     """
     if isinstance(filter, (list, tuple)):
         if len(filter) < 2 or len(filter) > 3:
-            raise RestException('Filters in list-format must have two or '
+            raise RestException('Filters in list format must have two or '
                                 'three components.')
         if len(filter) == 2:
             filter = {'field': filter[0], 'value': filter[1]}
@@ -199,12 +196,14 @@ def validateFilter(conn, fields, filter):
             'func': filter['rfunc'],
             'param': filter.get('rparam')
         }
+    if 'field' not in filter:
+        raise RestException('Filter must specify a field or func.')
     if not conn.isField(
             filter['field'], fields,
             allowFunc=getattr(conn, 'allowFilterFunctions', False)):
         raise RestException('Filters must be on known fields.')
     if not filter.get('value'):
-        filter['value'] = None
+        raise RestException('Filters must have a value or rfunc.')
     if not conn.checkOperatorDatatype(filter['field'], filter['operator'],
                                       fields):
         raise RestException('Cannot use %s operator on field %s' % (
@@ -443,9 +442,8 @@ class DatabaseItemResource(Item):
         filters = getFilters(conn, fields, params.get('filters'), params, {
             'limit', 'offset', 'sort', 'sortdir', 'fields', 'wait', 'poll',
             'initwait', 'clientid', 'filters', 'format'})
-        queryInfo = conn.prepareSelect(fields, queryProps, filters, client)
         result = conn.performSelectWithPolling(fields, queryProps, filters,
-                                               client, queryInfo)
+                                               client)
         if result is None:
             cherrypy.response.status = 500
             return

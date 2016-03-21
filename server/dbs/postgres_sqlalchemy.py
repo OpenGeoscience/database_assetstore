@@ -34,6 +34,18 @@ PostgresOperators = {
     'not_search': '!~*',  # This could be custom
 }
 
+PostgresDatatypes = {
+    'number': ('integer', 'bigint', 'int8', 'bigserial', 'numeric',
+               'double precision', 'float8', 'int', 'int4', 'real', 'float4',
+               'smallint', 'int2', 'smallserial', 'serial2', 'serial',
+               'serial4'),
+    'boolean': ('boolean', 'bool'),
+    'string': ('character', 'char', 'character varying', 'varchar', 'json',
+               'text'),
+    'date': ('timestamp', 'timestamp with time zone',
+             'timestamp without time zone'),
+}
+
 
 class PostgresSAConnector(SQLAlchemyConnector):
     name = 'sqlalchemy_postgres'
@@ -67,6 +79,27 @@ class PostgresSAConnector(SQLAlchemyConnector):
                           not func[0].startswith('_'))
                 for func in funcs}
         return self._allowedFunctions.get(funcname.lower(), False)
+
+    def getFieldInfo(self):
+        """
+        Return a list of fields that are known and can be queried.
+
+        :return: a list of known fields.  Each entry is a dictionary with name,
+                 datatype, and optionally a description.
+        """
+        if self.fields is not None:
+            return self.fields
+        super(PostgresSAConnector, self).getFieldInfo()
+        if self.fields is not None:
+            for field in self.fields:
+                if 'type' in field:
+                    datatype = field['type'].lower().split('(')[0]
+                    for key in PostgresDatatypes:
+                        if datatype in PostgresDatatypes[key]:
+                            datatype = key
+                            break
+                    field['datatype'] = datatype
+        return self.fields
 
 
 base.registerConnectorClass(PostgresSAConnector.name, PostgresSAConnector)

@@ -128,6 +128,9 @@ class SQLAlchemyConnector(base.DatabaseConnector):
             return getattr(self.tableClass, fieldOrFunction['field'])
         if 'value' in fieldOrFunction:
             return fieldOrFunction['value']
+        import sys  # ##DWM::
+        sys.stderr.write(  # ##DWM::
+            '_convertFieldOrFunction %r\n' % fieldOrFunction)  # ##DWM::
         fieldOrFunction = self.isFunction(fieldOrFunction)
         if fieldOrFunction is False:
             raise DatabaseConnectorException('Not a function')
@@ -253,8 +256,7 @@ class SQLAlchemyConnector(base.DatabaseConnector):
             self.fields = fields
         return fields
 
-    def performSelect(self, fields=None, queryProps={}, filters=[],
-                      client=None, queryInfo=None):
+    def performSelect(self, fields, queryProps={}, filters=[], client=None):
         """
         Perform a select query.  The results are passed back as a dictionary
         with the following values:
@@ -266,8 +268,7 @@ class SQLAlchemyConnector(base.DatabaseConnector):
           data: a list with one entry per row of results.  Each entry is a list
         with one entry per column.
 
-        :param fields: the results from getFieldInfo.  If None, this may call
-                       getFieldInfo.
+        :param fields: the results from getFieldInfo.
         :param queryProps: general query properties, including limit, offset,
                            and sort.
         :param filters: a list of filters to apply.
@@ -276,8 +277,6 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         :return: the results of the query.  See above.
         """
         if queryProps.get('fields') is None:
-            if not fields:
-                fields = self.getFieldInfo()
             queryProps['fields'] = [field['name'] for field in fields]
         result = {
             'limit': queryProps.get('limit'),
