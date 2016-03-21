@@ -23,7 +23,6 @@ import os
 from girder import config
 from tests import base
 
-
 # boiler plate to start and stop the server
 
 os.environ['GIRDER_PORT'] = os.environ.get('GIRDER_TEST_PORT', '20200')
@@ -49,7 +48,7 @@ class ItemTest(base.TestCase):
 
     def _setupDbItems(self):
         """
-        Set up two db items, one using sqlalchemy_postgres and one sqlalchemy.
+        Set up db items, one using sqlalchemy_postgres and one sqlalchemy.
 
         :returns: the two item ids.
         """
@@ -59,7 +58,7 @@ class ItemTest(base.TestCase):
             itemId, ), user=self.admin, type='application/json',
             body=json.dumps(self.dbParams))
         self.assertStatusOk(resp)
-        # Also set up item2 with the sqlalchemy connector, so we can test that
+        # Set up item2 with the sqlalchemy connector, so we can test that
         # functions won't work in it.
         dbParams2 = self.dbParams.copy()
         dbParams2['type'] = 'sqlalchemy'
@@ -85,8 +84,8 @@ class ItemTest(base.TestCase):
             'lastName': 'Last',
             'password': 'goodpassword'
         })
-        self.admin, self.user =\
-            [self.model('user').createUser(**user) for user in users]
+        self.admin, self.user = [
+            self.model('user').createUser(**user) for user in users]
         folders = self.model('folder').childFolders(
             self.admin, 'user', user=self.admin)
         for folder in folders:
@@ -172,6 +171,21 @@ class ItemTest(base.TestCase):
         self.assertStatusOk(resp)
         self.assertEqual(resp.json['deleted'], False)
 
+    def testItemDatabaseBadConnectors(self):
+        from girder.plugins.girder_db_items import dbs
+        self.assertIsNone(dbs.getDBConnector('test1', {'type': 'base'}))
+        dbs.base.registerConnectorClass('base', dbs.base.DatabaseConnector)
+        self.assertIsNone(dbs.getDBConnector('test1', {'type': 'base'}))
+        del dbs.base._connectorClasses['base']
+
+    def testItemDatabaseBaseConnectorClass(self):
+        from girder.plugins.girder_db_items import dbs
+        conn = dbs.base.DatabaseConnector()
+        res = conn.performSelect()
+        self.assertEqual(res['data'], [])
+        self.assertEqual(res['fields'], [])
+        self.assertFalse(conn.validate())
+
     def testItemDatabaseFields(self):
         itemId = str(self.item1['_id'])
         resp = self.request(path='/item/%s/database/fields' % (
@@ -208,6 +222,17 @@ class ItemTest(base.TestCase):
         with self.assertRaises(Exception):
             resp = self.request(path='/item/%s/database/fields' % (
                 itemId, ), user=self.admin)
+        # break the information in the item to make sure that we fail as
+        # expected
+        from girder.plugins.girder_db_items import dbs, dbInfoKey
+        item = self.model('item').load(id=itemId, force=True)
+        item[dbInfoKey]['url'] = ''
+        self.model('item').save(item)
+        dbs.base._connectorCache.pop(str(item['_id']), None)
+        resp = self.request(path='/item/%s/database/fields' % (
+            itemId, ), user=self.admin)
+        self.assertStatus(resp, 400)
+        self.assertIn('Failed to connect', resp.json['message'])
 
     def testItemDatabaseRefresh(self):
         itemId = str(self.item1['_id'])
@@ -283,6 +308,25 @@ class ItemTest(base.TestCase):
         self.assertStatusOk(resp)
         self.assertEqual(len(resp.json['data']), 5)
         self.assertEqual(resp.json['data'][:-2], lastData['data'][2:])
+        # break the database link
+        resp = self.request(method='POST', path='/item/%s/database' % (
+            itemId, ), user=self.admin, type='application/json',
+            body=json.dumps({'url': self.dbParams['url'] + '_notpresent'}))
+        self.assertStatusOk(resp)
+        with self.assertRaises(Exception):
+            resp = self.request(path='/item/%s/database/select' % (
+                itemId, ), user=self.admin, params=params)
+        # break the information in the item to make sure that we fail as
+        # expected
+        from girder.plugins.girder_db_items import dbs, dbInfoKey
+        item = self.model('item').load(id=itemId, force=True)
+        item[dbInfoKey]['url'] = ''
+        self.model('item').save(item)
+        dbs.base._connectorCache.pop(str(item['_id']), None)
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.admin, params=params)
+        self.assertStatus(resp, 400)
+        self.assertIn('Failed to connect', resp.json['message'])
 
     def testItemDatabaseSelectSort(self):
         itemId, itemId2 = self._setupDbItems()
@@ -314,20 +358,19 @@ class ItemTest(base.TestCase):
         # Use a function
         params['sort'] = json.dumps([{
             'func': 'mod', 'param': [{'field': 'pop2010'}, 10]},
-            'town'
+            ['town', -1]
         ])
         resp = self.request(path='/item/%s/database/select' % (
             itemId, ), user=self.user, params=params)
         self.assertStatusOk(resp)
         self.assertEqual(
             int(resp.json['data'][0][resp.json['columns']['pop2010']]) % 10, 0)
-        self.assertLess(resp.json['data'][0][resp.json['columns']['town']],
-                        resp.json['data'][1][resp.json['columns']['town']])
+        self.assertGreater(resp.json['data'][0][resp.json['columns']['town']],
+                           resp.json['data'][1][resp.json['columns']['town']])
         # This must not work on item2
         with self.assertRaises(Exception):
             resp = self.request(path='/item/%s/database/select' % (
                 itemId2, ), user=self.user, params=params)
-
         # Test with bad parameters
         params['sort'] = '["not valid json'
         resp = self.request(path='/item/%s/database/select' % (
@@ -344,8 +387,75 @@ class ItemTest(base.TestCase):
             itemId, ), user=self.user, params=params)
         self.assertStatus(resp, 400)
         self.assertIn('must use known fields', resp.json['message'])
+        params['sort'] = json.dumps([['town'], ['unknownfield', -1]])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatus(resp, 400)
+        self.assertIn('must use known fields', resp.json['message'])
 
-    # test fields, fields with functions
+    def testItemDatabaseSelectFields(self):
+        itemId, itemId2 = self._setupDbItems()
+        # Unknown fields aren't allowed
+        params = {'fields': 'unknown,town', 'limit': 5}
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatus(resp, 400)
+        self.assertIn('must use known fields', resp.json['message'])
+        # a comma separated list works
+        params['fields'] = 'town,pop2010'
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(resp.json['fields'], ['town', 'pop2010'])
+        self.assertEqual(resp.json['columns'], {'town': 0, 'pop2010': 1})
+        # extra commas and white space at the ends of field names are allowed
+        params['fields'] = 'town ,, pop2010 ,,'
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(resp.json['fields'], ['town', 'pop2010'])
+        self.assertEqual(resp.json['columns'], {'town': 0, 'pop2010': 1})
+        # You can use json instead
+        params['fields'] = json.dumps(['town', 'pop2010'])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(resp.json['fields'], ['town', 'pop2010'])
+        self.assertEqual(resp.json['columns'], {'town': 0, 'pop2010': 1})
+        # Invalid json fails
+        params['fields'] = '["not valid json",town'
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatus(resp, 400)
+        self.assertIn('must be a JSON list', resp.json['message'])
+        # instead of a field name, you can use a function
+        params['fields'] = json.dumps([
+            'town',
+            {'func': 'mod', 'param': [{'field': 'pop2010'}, 10]},
+        ])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(resp.json['fields'], json.loads(params['fields']))
+        self.assertEqual(resp.json['columns'], {'town': 0, 'column_1': 1})
+        # This must not work on item2
+        with self.assertRaises(Exception):
+            resp = self.request(path='/item/%s/database/select' % (
+                itemId2, ), user=self.user, params=params)
+        # We can use a reference to better find our column
+        params['fields'] = json.dumps([
+            'town',
+            {
+                'func': 'mod',
+                'param': [{'field': 'pop2010'}, 10],
+                'reference': 'popmod'
+            },
+        ])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(resp.json['fields'], json.loads(params['fields']))
+        self.assertEqual(resp.json['columns'], {'town': 0, 'popmod': 1})
 
     # filter, filter via params, filter with functions, operators per datatypes
 
@@ -353,8 +463,6 @@ class ItemTest(base.TestCase):
     # actual database)
 
     # test client and cancelling queries
-
-    # test subclassing connector to try test base connector defaults
 
     # Add code for returning dictionary format
 
