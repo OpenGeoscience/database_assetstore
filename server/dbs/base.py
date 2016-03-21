@@ -119,8 +119,6 @@ def getDBConnector(id, dbinfo):
         if connClass is None:
             return None
         conn = connClass(**dbinfo)
-        if conn is None:
-            return None
         if not getattr(conn, 'initialized', None):
             return None
         _connectorCache[id] = conn
