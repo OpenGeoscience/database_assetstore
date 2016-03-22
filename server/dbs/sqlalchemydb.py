@@ -127,6 +127,9 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         if 'field' in fieldOrFunction:
             return getattr(self.tableClass, fieldOrFunction['field'])
         if 'value' in fieldOrFunction:
+            if not preferValue:
+                return sqlalchemy.sql.elements.literal(
+                    fieldOrFunction['value'])
             return fieldOrFunction['value']
         fieldOrFunction = self.isFunction(fieldOrFunction)
         if fieldOrFunction is False:
@@ -136,7 +139,7 @@ class SQLAlchemyConnector(base.DatabaseConnector):
                                              fieldOrFunction['func'])
         return getattr(sqlalchemy.func, fieldOrFunction['func'])(
             *[self._convertFieldOrFunction(entry, True) for entry in
-              fieldOrFunction['param']])
+              fieldOrFunction.get('param', fieldOrFunction.get('params', []))])
 
     def _isFunctionAllowed(self, proname):
         """

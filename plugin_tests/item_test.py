@@ -629,6 +629,14 @@ class ItemTest(base.TestCase):
         self.assertStatusOk(resp)
         self.assertEqual(len(resp.json['data']), 1)
         self.assertEqual(resp.json['data'][0][0], 'BOSTON')
+        # Test have the value first
+        params['filters'] = json.dumps([{
+            'lvalue': 'BOSTON', 'value': {'field': 'town'}}])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 1)
+        self.assertEqual(resp.json['data'][0][0], 'BOSTON')
         # test operators
         params['filters'] = json.dumps([{
             'field': 'town', 'operator': '>=', 'value': 'BOS'}])
@@ -774,11 +782,10 @@ class ItemTest(base.TestCase):
         # Send a slow query in a thread.
         params['fields'] = json.dumps([
             'town',
-            {'func': 'st_tesselate', 'param': {'field': 'geom'}},
-            {'func': 'st_transform', 'param': [{
-                'func': 'st_tesselate', 'param': {'field': 'geom'}}, 4328]},
-            {'func': 'st_tesselate', 'param': {
-                'func': 'st_transform', 'param': [{'field': 'geom'}, 4328]}},
+            {'func': 'st_difference', 'param': [
+                {'func': 'st_minimumboundingcircle', 'param': {
+                    'field': 'geom'}},
+                {'field': 'geom'}]},
         ])
         slowResults = {}
 
@@ -804,13 +811,83 @@ class ItemTest(base.TestCase):
         self.assertStatusOk(resp)
         # The slow request should be cancelled
         slow.join()
-        self.assertIn('canceling statement due to user request',
-                      slowResults['exc'].message)
+        self.assertTrue(
+            'canceling statement due to user' in slowResults['exc'].message or
+            'InterruptedException' in slowResults['exc'].message)
 
-    # test polling (use subclassed connector so we don't need an actual
-    # database)
+    def testItemDatabaseSelectPolling(self):
+        # Create a test database connector so we can check polling
+        from girder.plugins.girder_db_items import dbs
 
-    # Debug to be removed
-    # import sys
-    # sys.stderr.write('Resp: %r\n' % resp.json)
-    # self.assertTrue(False)
+        dbInfo = {'queries': 0, 'data': [[1]]}
+
+        class TestConnector(dbs.base.DatabaseConnector):
+            name = 'test'
+
+            def __init__(self, *args, **kwargs):
+                super(TestConnector, self).__init__(*args, **kwargs)
+                self.initialized = True
+
+            def getFieldInfo(self):
+                return [{'name': 'test', 'type': 'number'}]
+
+            def performSelect(self, *args, **kwargs):
+                dbInfo['queries'] += 1
+                if dbInfo['data'] is None:
+                    return
+                results = super(TestConnector, self).performSelect(
+                    *args, **kwargs)
+                results['data'] = dbInfo['data']
+                return results
+
+            @staticmethod
+            def validate(*args, **kwargs):
+                return True
+
+        dbs.base.registerConnectorClass(TestConnector.name, TestConnector)
+        itemId, itemId2 = self._setupDbItems({'type': 'test'})
+        params = {}
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(resp.json['data'], [[1]])
+        params = {'wait': 1}
+        # Waiting shouldn't affect the results since there is data available
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(resp.json['data'], [[1]])
+        # If no data is available for the wait duration, we can get a null
+        # response
+        dbInfo['data'].pop()
+        lastCount = dbInfo['queries']
+        params = {'wait': 0.01, 'poll': 0.01}
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(resp.json.get('data', []), [])
+        self.assertEqual(dbInfo['queries'], lastCount + 2)
+        # We should be able to wait for results
+
+        def addData(delay, value):
+            time.sleep(delay)
+            dbInfo['data'].append([value])
+
+        add = threading.Thread(target=addData, args=(1, 2))
+        add.start()
+        lastCount = dbInfo['queries']
+        params = {'initwait': 0.3, 'poll': 0.1, 'wait': 10}
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        # Don't depend on exact counts, as the test could be slow
+        self.assertEqual(resp.json['data'], [[2]])
+        self.assertGreater(dbInfo['queries'], lastCount + 3)
+        self.assertLess(dbInfo['queries'], lastCount + 9)
+        add.join()
+
+        # Test if we have bad data we get an exception
+        dbInfo['data'] = None
+        with self.assertRaises(Exception):
+            resp = self.request(path='/item/%s/database/select' % (
+                itemId, ), user=self.user, params=params)

@@ -78,6 +78,12 @@ class PostgresSAConnector(SQLAlchemyConnector):
                           not func[0].startswith('pg_') and
                           not func[0].startswith('_'))
                 for func in funcs}
+            # If any variant of a function is volatile, don't allow it (a
+            # function can be overloaded for different data types)
+            for func in funcs:
+                if (func[1] not in ('i', 's') and
+                        self._allowedFunctions.get(func[0], False)):
+                    self._allowedFunctions[func[0]] = False
         return self._allowedFunctions.get(funcname.lower(), False)
 
     def getFieldInfo(self):

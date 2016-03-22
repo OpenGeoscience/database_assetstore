@@ -202,21 +202,26 @@ def validateFilter(conn, fields, filter):
         raise RestException('Unknown filter operator %r' % filter.get(
             'operator'))
     filter['operator'] = dbs.FilterOperators[filter.get('operator')]
-    if 'field' not in filter and 'func' in filter:
+    if 'field' not in filter and 'lvalue' in filter:
+        filter['field'] = {'value': filter['lvalue']}
+    if 'field' not in filter and ('func' in filter or 'lfunc' in filter):
         filter['field'] = {
-            'func': filter['func'],
-            'param': filter.get('param')
+            'func': filter.get('func', filter.get('lfunc')),
+            'param': filter.get('param', filter.get('params', filter.get(
+                'lparam', filter.get('lparams'))))
         }
     if 'value' not in filter and 'rfunc' in filter:
         filter['value'] = {
             'func': filter['rfunc'],
-            'param': filter.get('rparam')
+            'param': filter.get('rparam', filter.get('rparams'))
         }
     if 'field' not in filter:
         raise RestException('Filter must specify a field or func.')
-    if not conn.isField(
+    if (not conn.isField(
             filter['field'], fields,
-            allowFunc=getattr(conn, 'allowFilterFunctions', False)):
+            allowFunc=getattr(conn, 'allowFilterFunctions', False)) and
+            not isinstance(filter['field'], dict) and
+            'value' not in filter['field'] and 'func' not in filter['field']):
         raise RestException('Filters must be on known fields.')
     if not filter.get('value'):
         raise RestException('Filters must have a value or rfunc.')
@@ -376,6 +381,12 @@ class DatabaseItemResource(Item):
                'with a function definition and an optional "reference" entry '
                'which is used to identify the resultant column.',
                required=False)
+        .param('filters', 'A JSON list of filters to apply to the data.  Each '
+               'entry in the list can be either a list or a dictionary.  If a '
+               'list, it contains [(field), (operator), (value)], where '
+               '(operator) is optional.  If a dictionary, at least the '
+               '"field" and "value" keys must contain values, and "operator" '
+               'and "function" keys can also be added.', required=False)
         .param('format', 'The format to return the data (default is '
                'list).', required=False, enum=['list', 'dict'])
         .param('clientid', 'A string to use for a client id.  If specified '
@@ -393,12 +404,6 @@ class DatabaseItemResource(Item):
                'starting to poll for more data.  This is not counted as part '
                'of the wait duration (default=0).', required=False,
                dataType='float', default=0)
-        .param('filters', 'A JSON list of filters to apply to the data.  Each '
-               'entry in the list can be either a list or a dictionary.  If a '
-               'list, it contains [(field), (operator), (value)], where '
-               '(operator) is optional.  If a dictionary, at least the '
-               '"field" and "value" keys must contain values, and "operator" '
-               'and "function" keys can also be added.', required=False)
         .notes('Instead of or in addition to specifying a filters parameter, '
                'additional query parameters of the form (field)[_(operator)]='
                '(value) can be used.  '

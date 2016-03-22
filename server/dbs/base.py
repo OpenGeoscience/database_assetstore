@@ -50,13 +50,14 @@ FilterOperators = {
     'not_regex': 'not_regex',
     'notregex': 'not_regex',
     '!~': 'not_regex',
-    'notsearch': 'not_search',
+    'not_search': 'not_search',
     'notsearch': 'not_search',
     '!~*': 'not_search',
     'is': 'is',
     'not_is': 'not_is',
     'notis': 'not_is',
     'isnot': 'not_is',
+    'is_not': 'not_is',
 }
 DatatypeOperators = {
     'array': {'in', 'not_in'},
@@ -185,7 +186,7 @@ class DatabaseConnector(object):
         if isinstance(name, dict):
             if 'field' in name:
                 name = name['field']
-            elif ('func' in name or 'lfunc' in name) and allowFunc:
+            elif 'func' in name and allowFunc:
                 return self.isFunction(name, fields) is not False
             else:
                 return False
@@ -219,7 +220,7 @@ class DatabaseConnector(object):
             'func': func['func'],
             'param': []
         }
-        param = func.get('param', [])
+        param = func.get('param', func.get('params', []))
         if not isinstance(param, (list, tuple)):
             param = [param]
         for entry in param:
@@ -290,7 +291,7 @@ class DatabaseConnector(object):
         if not wait:
             return self.performSelect(fields, queryProps, *args, **kwargs)
         if queryProps.get('initwait'):
-            time.sleep(queryProps.get('initwait'))
+            time.sleep(queryProps['initwait'])
         poll = queryProps.get('poll', 10)
 
         starttime = time.time()
