@@ -128,9 +128,6 @@ class SQLAlchemyConnector(base.DatabaseConnector):
             return getattr(self.tableClass, fieldOrFunction['field'])
         if 'value' in fieldOrFunction:
             return fieldOrFunction['value']
-        import sys  # ##DWM::
-        sys.stderr.write(  # ##DWM::
-            '_convertFieldOrFunction %r\n' % fieldOrFunction)  # ##DWM::
         fieldOrFunction = self.isFunction(fieldOrFunction)
         if fieldOrFunction is False:
             raise DatabaseConnectorException('Not a function')
@@ -200,6 +197,8 @@ class SQLAlchemyConnector(base.DatabaseConnector):
             self.sessions[client]['used'] = False
         if client in self.sessions:
             sess = self.sessions[client]['session']
+            # Always ensure a fresh query
+            sess.rollback()
         else:
             sess = sqlalchemy.orm.sessionmaker(bind=self.dbEngine)()
             # This is a further guard against changing the database.  It isn't

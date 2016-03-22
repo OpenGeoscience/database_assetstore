@@ -19,6 +19,8 @@
 
 import json
 import os
+import threading
+import time
 
 from girder import config
 from tests import base
@@ -46,21 +48,24 @@ class ItemTest(base.TestCase):
                               'postgresql://postgres@127.0.0.1/sampledb')
     }
 
-    def _setupDbItems(self):
+    def _setupDbItems(self, args={}):
         """
         Set up db items, one using sqlalchemy_postgres and one sqlalchemy.
 
+        :param args: additional arguments to set on database connections.
         :returns: the two item ids.
         """
+        dbParams = self.dbParams.copy()
+        dbParams.update(args)
         itemId = str(self.item1['_id'])
         itemId2 = str(self.item2['_id'])
         resp = self.request(method='POST', path='/item/%s/database' % (
             itemId, ), user=self.admin, type='application/json',
-            body=json.dumps(self.dbParams))
+            body=json.dumps(dbParams))
         self.assertStatusOk(resp)
         # Set up item2 with the sqlalchemy connector, so we can test that
         # functions won't work in it.
-        dbParams2 = self.dbParams.copy()
+        dbParams2 = dbParams.copy()
         dbParams2['type'] = 'sqlalchemy'
         resp = self.request(method='POST', path='/item/%s/database' % (
             itemId2, ), user=self.admin, type='application/json',
@@ -270,6 +275,23 @@ class ItemTest(base.TestCase):
             itemId, ), user=self.user)
         self.assertStatusOk(resp)
         self.assertEqual(resp.json['refreshed'], False)
+
+    def testItemDatabaseView(self):
+        # Test that we can get data from a view (this is the same as accessing
+        # a table without a primary key)
+        itemId = str(self.item1['_id'])
+        params = self.dbParams.copy()
+        params['table'] = 'geometry_columns'
+        resp = self.request(method='POST', path='/item/%s/database' % (
+            itemId, ), user=self.admin, type='application/json',
+            body=json.dumps(params))
+        self.assertStatusOk(resp)
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user)
+        self.assertStatusOk(resp)
+        self.assertGreater(len(resp.json['data']), 10)
+        self.assertGreater(resp.json['datacount'], 10)
+        self.assertEqual(len(resp.json['columns']), len(resp.json['fields']))
 
     def testItemDatabaseSelectBasic(self):
         itemId = str(self.item1['_id'])
@@ -709,14 +731,84 @@ class ItemTest(base.TestCase):
         self.assertEqual(len(resp.json['data']), 1)
         self.assertEqual(resp.json['data'][0][0], 'RUTLAND')
 
+    def testItemDatabaseSelectDictFormat(self):
+        itemId, itemId2 = self._setupDbItems()
+        params = {'sort': 'town', 'limit': 5, 'format': 'dict'}
+        params['fields'] = 'town,pop2010,shape_len,type'
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(resp.json['fields'], [
+            'town', 'pop2010', 'shape_len', 'type'])
+        self.assertEqual(resp.json['columns'], {
+            'town': 0, 'pop2010': 1, 'shape_len': 2, 'type': 3})
+        self.assertTrue(isinstance(resp.json['data'][0], dict))
+        self.assertEqual(set(resp.json['data'][0].keys()),
+                         set(['town', 'pop2010', 'shape_len', 'type']))
+
+    def testItemDatabaseSelectClient(self):
+        itemId, itemId2 = self._setupDbItems()
+        params = {'sort': 'town', 'limit': 1, 'clientid': 'test'}
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        from girder.plugins.girder_db_items import dbs
+        sessions = dbs.base._connectorCache[itemId].sessions
+        # We should be tracking the a session for 'test'
+        self.assertIn('test', sessions)
+        self.assertFalse(sessions['test']['used'])
+        last = sessions['test'].copy()
+        # A new request should update the last used time
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertGreater(sessions['test']['last'], last['last'])
+        self.assertEqual(sessions['test']['session'], last['session'])
+        # Artifically age the last session and test that we get a new session
+        last = sessions['test'].copy()
+        sessions['test']['last'] -= 305  # 300 is the default expiry age
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertNotEqual(sessions['test']['session'], last['session'])
+        # Send a slow query in a thread.
+        params['fields'] = json.dumps([
+            'town',
+            {'func': 'st_tesselate', 'param': {'field': 'geom'}},
+            {'func': 'st_transform', 'param': [{
+                'func': 'st_tesselate', 'param': {'field': 'geom'}}, 4328]},
+            {'func': 'st_tesselate', 'param': {
+                'func': 'st_transform', 'param': [{'field': 'geom'}, 4328]}},
+        ])
+        slowResults = {}
+
+        def slowQuery(params):
+            try:
+                self.request(path='/item/%s/database/select' % (
+                    itemId, ), user=self.user, params=params)
+            except Exception as exc:
+                slowResults['exc'] = exc
+
+        slow = threading.Thread(target=slowQuery, kwargs={
+            'params': params
+        })
+        slow.start()
+        # Wait for the query to start
+        while not sessions['test']['used'] and slow.is_alive():
+            time.sleep(0.05)
+        del params['fields']
+        # Sending a normal request should cancel the slow one and respond
+        # promptly
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        # The slow request should be cancelled
+        slow.join()
+        self.assertIn('canceling statement due to user request',
+                      slowResults['exc'].message)
+
     # test polling (use subclassed connector so we don't need an actual
     # database)
-
-    # test client and cancelling queries
-
-    # Add code for returning dictionary format
-
-    # Test with a view instead of a table
 
     # Debug to be removed
     # import sys

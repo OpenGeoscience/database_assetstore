@@ -36,6 +36,22 @@ from . import dbs
 dbInfoKey = 'databaseMetadata'
 
 
+def convertSelectDataToDict(result):
+    """
+    Convert data in list format to dictionary format.  The column names are
+    used as the keys for each row.
+
+    :param result: the initial select results.
+    :returns: the results with data converted from a list of lists to a list of
+              dictionaries.
+    """
+    columns = {result['columns'][col]: col for col in result['columns']}
+    result['data'] = [{columns[i]: row[i] for i in range(len(row))}
+                      for row in result['data']]
+    result['format'] = 'dict'
+    return result
+
+
 def getFilters(conn, fields, filtersValue=None, queryParams={},
                reservedParameters=[]):
     """
@@ -456,9 +472,7 @@ class DatabaseItemResource(Item):
         result['datacount'] = len(result.get('data', []))
         result['format'] = 'list'
         if format == 'dict':
-            pass  # ##DWM::
-            # result = convertSelectDataToDict(result)
-            # ##DWM::
+            result = convertSelectDataToDict(result)
 
         # We could let Girder convert the results into JSON, but it is
         # marginally faster to dump the JSON ourselves, since we can
