@@ -36,7 +36,23 @@ from . import dbs
 dbInfoKey = 'databaseMetadata'
 
 
-def getFilters(conn, fields=None, filtersValue=None, queryParams={},
+def convertSelectDataToDict(result):
+    """
+    Convert data in list format to dictionary format.  The column names are
+    used as the keys for each row.
+
+    :param result: the initial select results.
+    :returns: the results with data converted from a list of lists to a list of
+              dictionaries.
+    """
+    columns = {result['columns'][col]: col for col in result['columns']}
+    result['data'] = [{columns[i]: row[i] for i in range(len(row))}
+                      for row in result['data']]
+    result['format'] = 'dict'
+    return result
+
+
+def getFilters(conn, fields, filtersValue=None, queryParams={},
                reservedParameters=[]):
     """
     Get a set of filters from a JSON list and/or from a set of query
@@ -44,16 +60,13 @@ def getFilters(conn, fields=None, filtersValue=None, queryParams={},
     the entire name is not in the reserver parameter list are processed.
 
     :param conn: the database connector.  Used for validating fields.
-    :param fields: a list of known fields.  None to let the connector fetch
-                   them.
+    :param fields: a list of known fields.  This is conn.getFieldInfo().
     :filtersValue: a JSON object with the desired filters or None or empty
                    string.
     :queryParameters: a dictionary of query parameters that can add additional
                       filters.
     :reservedParameters: a list or set of reserver parameter names.
     """
-    if not fields:
-        fields = conn.getFieldInfo()
     filters = []
     if filtersValue not in (None, ''):
         try:
@@ -177,7 +190,7 @@ def validateFilter(conn, fields, filter):
     """
     if isinstance(filter, (list, tuple)):
         if len(filter) < 2 or len(filter) > 3:
-            raise RestException('Filters in list-format must have two or '
+            raise RestException('Filters in list format must have two or '
                                 'three components.')
         if len(filter) == 2:
             filter = {'field': filter[0], 'value': filter[1]}
@@ -189,22 +202,29 @@ def validateFilter(conn, fields, filter):
         raise RestException('Unknown filter operator %r' % filter.get(
             'operator'))
     filter['operator'] = dbs.FilterOperators[filter.get('operator')]
-    if 'field' not in filter and 'func' in filter:
+    if 'field' not in filter and 'lvalue' in filter:
+        filter['field'] = {'value': filter['lvalue']}
+    if 'field' not in filter and ('func' in filter or 'lfunc' in filter):
         filter['field'] = {
-            'func': filter['func'],
-            'param': filter.get('param')
+            'func': filter.get('func', filter.get('lfunc')),
+            'param': filter.get('param', filter.get('params', filter.get(
+                'lparam', filter.get('lparams'))))
         }
     if 'value' not in filter and 'rfunc' in filter:
         filter['value'] = {
             'func': filter['rfunc'],
-            'param': filter.get('rparam')
+            'param': filter.get('rparam', filter.get('rparams'))
         }
-    if not conn.isField(
+    if 'field' not in filter:
+        raise RestException('Filter must specify a field or func.')
+    if (not conn.isField(
             filter['field'], fields,
-            allowFunc=getattr(conn, 'allowFilterFunctions', False)):
+            allowFunc=getattr(conn, 'allowFilterFunctions', False)) and
+            not isinstance(filter['field'], dict) and
+            'value' not in filter['field'] and 'func' not in filter['field']):
         raise RestException('Filters must be on known fields.')
     if not filter.get('value'):
-        filter['value'] = None
+        raise RestException('Filters must have a value or rfunc.')
     if not conn.checkOperatorDatatype(filter['field'], filter['operator'],
                                       fields):
         raise RestException('Cannot use %s operator on field %s' % (
@@ -361,6 +381,12 @@ class DatabaseItemResource(Item):
                'with a function definition and an optional "reference" entry '
                'which is used to identify the resultant column.',
                required=False)
+        .param('filters', 'A JSON list of filters to apply to the data.  Each '
+               'entry in the list can be either a list or a dictionary.  If a '
+               'list, it contains [(field), (operator), (value)], where '
+               '(operator) is optional.  If a dictionary, at least the '
+               '"field" and "value" keys must contain values, and "operator" '
+               'and "function" keys can also be added.', required=False)
         .param('format', 'The format to return the data (default is '
                'list).', required=False, enum=['list', 'dict'])
         .param('clientid', 'A string to use for a client id.  If specified '
@@ -378,12 +404,6 @@ class DatabaseItemResource(Item):
                'starting to poll for more data.  This is not counted as part '
                'of the wait duration (default=0).', required=False,
                dataType='float', default=0)
-        .param('filters', 'A JSON list of filters to apply to the data.  Each '
-               'entry in the list can be either a list or a dictionary.  If a '
-               'list, it contains [(field), (operator), (value)], where '
-               '(operator) is optional.  If a dictionary, at least the '
-               '"field" and "value" keys must contain values, and "operator" '
-               'and "function" keys can also be added.', required=False)
         .notes('Instead of or in addition to specifying a filters parameter, '
                'additional query parameters of the form (field)[_(operator)]='
                '(value) can be used.  '
@@ -443,9 +463,8 @@ class DatabaseItemResource(Item):
         filters = getFilters(conn, fields, params.get('filters'), params, {
             'limit', 'offset', 'sort', 'sortdir', 'fields', 'wait', 'poll',
             'initwait', 'clientid', 'filters', 'format'})
-        queryInfo = conn.prepareSelect(fields, queryProps, filters, client)
         result = conn.performSelectWithPolling(fields, queryProps, filters,
-                                               client, queryInfo)
+                                               client)
         if result is None:
             cherrypy.response.status = 500
             return
@@ -458,9 +477,7 @@ class DatabaseItemResource(Item):
         result['datacount'] = len(result.get('data', []))
         result['format'] = 'list'
         if format == 'dict':
-            pass  # ##DWM::
-            # result = convertSelectDataToDict(result)
-            # ##DWM::
+            result = convertSelectDataToDict(result)
 
         # We could let Girder convert the results into JSON, but it is
         # marginally faster to dump the JSON ourselves, since we can

@@ -19,6 +19,8 @@
 
 import json
 import os
+import threading
+import time
 
 from girder import config
 from tests import base
@@ -46,21 +48,24 @@ class ItemTest(base.TestCase):
                               'postgresql://postgres@127.0.0.1/sampledb')
     }
 
-    def _setupDbItems(self):
+    def _setupDbItems(self, args={}):
         """
         Set up db items, one using sqlalchemy_postgres and one sqlalchemy.
 
+        :param args: additional arguments to set on database connections.
         :returns: the two item ids.
         """
+        dbParams = self.dbParams.copy()
+        dbParams.update(args)
         itemId = str(self.item1['_id'])
         itemId2 = str(self.item2['_id'])
         resp = self.request(method='POST', path='/item/%s/database' % (
             itemId, ), user=self.admin, type='application/json',
-            body=json.dumps(self.dbParams))
+            body=json.dumps(dbParams))
         self.assertStatusOk(resp)
         # Set up item2 with the sqlalchemy connector, so we can test that
         # functions won't work in it.
-        dbParams2 = self.dbParams.copy()
+        dbParams2 = dbParams.copy()
         dbParams2['type'] = 'sqlalchemy'
         resp = self.request(method='POST', path='/item/%s/database' % (
             itemId2, ), user=self.admin, type='application/json',
@@ -185,6 +190,7 @@ class ItemTest(base.TestCase):
         self.assertEqual(res['data'], [])
         self.assertEqual(res['fields'], [])
         self.assertFalse(conn.validate())
+        self.assertTrue(conn.checkOperatorDatatype('unknown', 'unknown'))
 
     def testItemDatabaseFields(self):
         itemId = str(self.item1['_id'])
@@ -269,6 +275,23 @@ class ItemTest(base.TestCase):
             itemId, ), user=self.user)
         self.assertStatusOk(resp)
         self.assertEqual(resp.json['refreshed'], False)
+
+    def testItemDatabaseView(self):
+        # Test that we can get data from a view (this is the same as accessing
+        # a table without a primary key)
+        itemId = str(self.item1['_id'])
+        params = self.dbParams.copy()
+        params['table'] = 'geometry_columns'
+        resp = self.request(method='POST', path='/item/%s/database' % (
+            itemId, ), user=self.admin, type='application/json',
+            body=json.dumps(params))
+        self.assertStatusOk(resp)
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user)
+        self.assertStatusOk(resp)
+        self.assertGreater(len(resp.json['data']), 10)
+        self.assertGreater(resp.json['datacount'], 10)
+        self.assertEqual(len(resp.json['columns']), len(resp.json['fields']))
 
     def testItemDatabaseSelectBasic(self):
         itemId = str(self.item1['_id'])
@@ -456,19 +479,415 @@ class ItemTest(base.TestCase):
         self.assertStatusOk(resp)
         self.assertEqual(resp.json['fields'], json.loads(params['fields']))
         self.assertEqual(resp.json['columns'], {'town': 0, 'popmod': 1})
+        # Test some function handling
+        params['sort'] = 'town'
+        params['fields'] = json.dumps([
+            {'func': 'lower', 'param': {'field': 'town'}}
+        ])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 5)
+        self.assertEqual(resp.json['data'][0][0], 'abington')
+        # This uses 'town' as a value in the first field, not a field
+        params['fields'] = json.dumps([
+            {'func': 'lower', 'param': 'town'},
+            'town'
+        ])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 5)
+        self.assertEqual(resp.json['data'][0][0], 'town')
+        # Function parameters must be fields, values, or otehr functions
+        params['fields'] = json.dumps([
+            {'func': 'lower', 'param': {'unknown': 'town'}}
+        ])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatus(resp, 400)
+        self.assertIn('must use known fields', resp.json['message'])
+        # Fields in functions must exist
+        params['fields'] = json.dumps([
+            {'func': 'lower', 'param': {'field': 'unknown'}}
+        ])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatus(resp, 400)
+        self.assertIn('must use known fields', resp.json['message'])
+        # We don't have to use a function
+        params['fields'] = json.dumps([{'field': 'town'}])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 5)
+        self.assertEqual(resp.json['data'][0][0], 'ABINGTON')
+        # But it needs to be a field or a function
+        params['fields'] = json.dumps([{'unknown': 'town'}])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatus(resp, 400)
+        self.assertIn('must use known fields', resp.json['message'])
 
-    # filter, filter via params, filter with functions, operators per datatypes
+    def testItemDatabaseSelectFilterViaParams(self):
+        itemId, itemId2 = self._setupDbItems()
+        # We can access filters either via the filter parameter or via the name
+        # of each field optionally suffixed with different operators.
+        baseParams = {'limit': 5, 'sort': 'town', 'fields': 'town'}
+        # Exact match
+        params = dict(baseParams.items() + {'town': 'BOSTON'}.items())
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 1)
+        self.assertEqual(resp.json['data'][0][0], 'BOSTON')
+        params = dict(baseParams.items() + {'town': 'boston'}.items())
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 0)
+        # minimum
+        params = dict(baseParams.items() + {'town_min': 'BOS'}.items())
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 5)
+        self.assertEqual(resp.json['data'][0][0], 'BOSTON')
+        # search
+        params = dict(baseParams.items() + {'town_search': '^bo.*n$'}.items())
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 3)
+        self.assertEqual(resp.json['data'][1][0], 'BOSTON')
+        # compound
+        params = dict(baseParams.items() + {
+            'town_min': 'BOS',
+            'town_notsearch': '^bo.*n$'
+        }.items())
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 5)
+        self.assertNotEqual(resp.json['data'][0][0], 'BOSTON')
+        # numeric comparisons are sent as text
+        params = dict(baseParams.items() + {'pop2010_min': '150000'}.items())
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 3)
+        self.assertEqual(resp.json['data'][0][0], 'BOSTON')
+        # you can't use regex or search on numeric types
+        params = dict(baseParams.items() + {'pop2010_search': '150000'}.items())
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatus(resp, 400)
+        self.assertIn('Cannot use search operator on field',
+                      resp.json['message'])
+        # We should be able to get the same results regardless of whether we
+        # use not or not_
+        params = dict(baseParams.items() + {
+            'town_min': 'BOS',
+            'town_notin': 'BOSTON'
+        }.items())
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 5)
+        self.assertEqual(resp.json['data'][0][0], 'BOURNE')
+        params = dict(baseParams.items() + {
+            'town_min': 'BOS',
+            'town_not_in': 'BOSTON'
+        }.items())
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 5)
+        self.assertEqual(resp.json['data'][0][0], 'BOURNE')
 
-    # test polling (possibly with subclasses connector so we don't need an
-    # actual database)
+    def testItemDatabaseSelectFilters(self):
+        itemId, itemId2 = self._setupDbItems()
+        params = {'limit': 5, 'sort': 'town', 'fields': 'town'}
+        params['filters'] = '[not json'
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatus(resp, 400)
+        self.assertIn('must be a JSON list', resp.json['message'])
+        params['filters'] = json.dumps({'town': 'BOSTON'})
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatus(resp, 400)
+        self.assertIn('must be a JSON list', resp.json['message'])
+        params['filters'] = json.dumps([{'town': 'BOSTON'}])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatus(resp, 400)
+        self.assertIn('must specify a field or func', resp.json['message'])
+        params['filters'] = json.dumps([{'field': 'town', 'value': 'BOSTON'}])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 1)
+        self.assertEqual(resp.json['data'][0][0], 'BOSTON')
+        # Test have the value first
+        params['filters'] = json.dumps([{
+            'lvalue': 'BOSTON', 'value': {'field': 'town'}}])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 1)
+        self.assertEqual(resp.json['data'][0][0], 'BOSTON')
+        # test operators
+        params['filters'] = json.dumps([{
+            'field': 'town', 'operator': '>=', 'value': 'BOS'}])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 5)
+        self.assertEqual(resp.json['data'][0][0], 'BOSTON')
+        params['filters'] = json.dumps([{
+            'field': 'town', 'operator': 'gt', 'value': 'BOS'}])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 5)
+        self.assertEqual(resp.json['data'][0][0], 'BOSTON')
+        params['filters'] = json.dumps([{
+            'field': 'town', 'operator': 'noop', 'value': 'BOS'}])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatus(resp, 400)
+        self.assertIn('Unknown filter operator', resp.json['message'])
+        # Functions must be known
+        params['filters'] = json.dumps([{
+            'field': 'town', 'value': {'func': 'unknown', 'params': []}
+        }])
+        with self.assertRaises(Exception):
+            resp = self.request(path='/item/%s/database/select' % (
+                itemId, ), user=self.user, params=params)
+        # We throw a different error when params is an empty dict
+        params['filters'] = json.dumps([{
+            'field': 'town', 'value': {'func': 'unknown', 'param': {}}}])
+        with self.assertRaises(Exception):
+            resp = self.request(path='/item/%s/database/select' % (
+                itemId, ), user=self.user, params=params)
+        # Test a filter composed of a list
+        params['filters'] = json.dumps([['town', 'gt', 'BOS']])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 5)
+        self.assertEqual(resp.json['data'][0][0], 'BOSTON')
+        params['filters'] = json.dumps([['town', 'BOSTON']])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 1)
+        self.assertEqual(resp.json['data'][0][0], 'BOSTON')
+        params['filters'] = json.dumps([['town', 'gt', 'BOSTON', 'extra']])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatus(resp, 400)
+        self.assertIn('must have two or three components',
+                      resp.json['message'])
+        # Fail on an unknown field
+        params['filters'] = json.dumps([['unknown', 'BOSTON']])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatus(resp, 400)
+        self.assertIn('Filters must be on known fields', resp.json['message'])
+        # Fail without a value
+        params['filters'] = json.dumps([{
+            'field': 'town'}])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatus(resp, 400)
+        self.assertIn('must have a value or rfunc', resp.json['message'])
+        # Test a right function
+        params['filters'] = json.dumps([{
+            'field': 'town', 'rfunc': 'upper', 'rparam': 'boston'}])
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertEqual(len(resp.json['data']), 1)
+        self.assertEqual(resp.json['data'][0][0], 'BOSTON')
+        # This must not work on item2
+        with self.assertRaises(Exception):
+            resp = self.request(path='/item/%s/database/select' % (
+                itemId2, ), user=self.user, params=params)
+        # Test a set of nested functions
+        filters = [{
+            'func': 'st_intersects',
+            'param': [{
+                'func': 'st_setsrid',
+                'param': [{
+                    'func': 'st_makepoint',
+                    'param': [-72, 42.3601]
+                }, 4326]
+            }, {
+                'func': 'st_transform',
+                'param': [{
+                    'field': 'geom'
+                }, 4326]
+            }],
+            'operator': 'is',
+            'value': True
+        }]
+        params['filters'] = json.dumps(filters)
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 1)
+        self.assertEqual(resp.json['data'][0][0], 'RUTLAND')
 
-    # test client and cancelling queries
+    def testItemDatabaseSelectDictFormat(self):
+        itemId, itemId2 = self._setupDbItems()
+        params = {'sort': 'town', 'limit': 5, 'format': 'dict'}
+        params['fields'] = 'town,pop2010,shape_len,type'
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(resp.json['fields'], [
+            'town', 'pop2010', 'shape_len', 'type'])
+        self.assertEqual(resp.json['columns'], {
+            'town': 0, 'pop2010': 1, 'shape_len': 2, 'type': 3})
+        self.assertTrue(isinstance(resp.json['data'][0], dict))
+        self.assertEqual(set(resp.json['data'][0].keys()),
+                         set(['town', 'pop2010', 'shape_len', 'type']))
 
-    # Add code for returning dictionary format
+    def testItemDatabaseSelectClient(self):
+        itemId, itemId2 = self._setupDbItems()
+        params = {'sort': 'town', 'limit': 1, 'clientid': 'test'}
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        from girder.plugins.girder_db_items import dbs
+        sessions = dbs.base._connectorCache[itemId].sessions
+        # We should be tracking the a session for 'test'
+        self.assertIn('test', sessions)
+        self.assertFalse(sessions['test']['used'])
+        last = sessions['test'].copy()
+        # A new request should update the last used time
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertGreater(sessions['test']['last'], last['last'])
+        self.assertEqual(sessions['test']['session'], last['session'])
+        # Artifically age the last session and test that we get a new session
+        last = sessions['test'].copy()
+        sessions['test']['last'] -= 305  # 300 is the default expiry age
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertNotEqual(sessions['test']['session'], last['session'])
+        # Send a slow query in a thread.
+        params['fields'] = json.dumps([
+            'town',
+            {'func': 'st_difference', 'param': [
+                {'func': 'st_minimumboundingcircle', 'param': {
+                    'field': 'geom'}},
+                {'field': 'geom'}]},
+        ])
+        slowResults = {}
 
-    # Test with a view instead of a table
+        def slowQuery(params):
+            try:
+                self.request(path='/item/%s/database/select' % (
+                    itemId, ), user=self.user, params=params)
+            except Exception as exc:
+                slowResults['exc'] = exc
 
-    # Debug to be removed
-    # import sys
-    # sys.stderr.write('Resp: %r\n' % resp.json)
-    # self.assertTrue(False)
+        slow = threading.Thread(target=slowQuery, kwargs={
+            'params': params
+        })
+        slow.start()
+        # Wait for the query to start
+        while not sessions['test']['used'] and slow.is_alive():
+            time.sleep(0.05)
+        del params['fields']
+        # Sending a normal request should cancel the slow one and respond
+        # promptly
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        # The slow request should be cancelled
+        slow.join()
+        self.assertTrue(
+            'canceling statement due to user' in slowResults['exc'].message or
+            'InterruptedException' in slowResults['exc'].message)
+
+    def testItemDatabaseSelectPolling(self):
+        # Create a test database connector so we can check polling
+        from girder.plugins.girder_db_items import dbs
+
+        dbInfo = {'queries': 0, 'data': [[1]]}
+
+        class TestConnector(dbs.base.DatabaseConnector):
+            name = 'test'
+
+            def __init__(self, *args, **kwargs):
+                super(TestConnector, self).__init__(*args, **kwargs)
+                self.initialized = True
+
+            def getFieldInfo(self):
+                return [{'name': 'test', 'type': 'number'}]
+
+            def performSelect(self, *args, **kwargs):
+                dbInfo['queries'] += 1
+                if dbInfo['data'] is None:
+                    return
+                results = super(TestConnector, self).performSelect(
+                    *args, **kwargs)
+                results['data'] = dbInfo['data']
+                return results
+
+            @staticmethod
+            def validate(*args, **kwargs):
+                return True
+
+        dbs.base.registerConnectorClass(TestConnector.name, TestConnector)
+        itemId, itemId2 = self._setupDbItems({'type': 'test'})
+        params = {}
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(resp.json['data'], [[1]])
+        params = {'wait': 1}
+        # Waiting shouldn't affect the results since there is data available
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(resp.json['data'], [[1]])
+        # If no data is available for the wait duration, we can get a null
+        # response
+        dbInfo['data'].pop()
+        lastCount = dbInfo['queries']
+        params = {'wait': 0.01, 'poll': 0.01}
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(resp.json.get('data', []), [])
+        self.assertEqual(dbInfo['queries'], lastCount + 2)
+        # We should be able to wait for results
+
+        def addData(delay, value):
+            time.sleep(delay)
+            dbInfo['data'].append([value])
+
+        add = threading.Thread(target=addData, args=(1, 2))
+        add.start()
+        lastCount = dbInfo['queries']
+        params = {'initwait': 0.3, 'poll': 0.1, 'wait': 10}
+        resp = self.request(path='/item/%s/database/select' % (
+            itemId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        # Don't depend on exact counts, as the test could be slow
+        self.assertEqual(resp.json['data'], [[2]])
+        self.assertGreater(dbInfo['queries'], lastCount + 3)
+        self.assertLess(dbInfo['queries'], lastCount + 9)
+        add.join()
+
+        # Test if we have bad data we get an exception
+        dbInfo['data'] = None
+        with self.assertRaises(Exception):
+            resp = self.request(path='/item/%s/database/select' % (
+                itemId, ), user=self.user, params=params)

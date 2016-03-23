@@ -127,6 +127,9 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         if 'field' in fieldOrFunction:
             return getattr(self.tableClass, fieldOrFunction['field'])
         if 'value' in fieldOrFunction:
+            if not preferValue:
+                return sqlalchemy.sql.elements.literal(
+                    fieldOrFunction['value'])
             return fieldOrFunction['value']
         fieldOrFunction = self.isFunction(fieldOrFunction)
         if fieldOrFunction is False:
@@ -136,7 +139,7 @@ class SQLAlchemyConnector(base.DatabaseConnector):
                                              fieldOrFunction['func'])
         return getattr(sqlalchemy.func, fieldOrFunction['func'])(
             *[self._convertFieldOrFunction(entry, True) for entry in
-              fieldOrFunction['param']])
+              fieldOrFunction.get('param', fieldOrFunction.get('params', []))])
 
     def _isFunctionAllowed(self, proname):
         """
@@ -197,6 +200,8 @@ class SQLAlchemyConnector(base.DatabaseConnector):
             self.sessions[client]['used'] = False
         if client in self.sessions:
             sess = self.sessions[client]['session']
+            # Always ensure a fresh query
+            sess.rollback()
         else:
             sess = sqlalchemy.orm.sessionmaker(bind=self.dbEngine)()
             # This is a further guard against changing the database.  It isn't
@@ -253,8 +258,7 @@ class SQLAlchemyConnector(base.DatabaseConnector):
             self.fields = fields
         return fields
 
-    def performSelect(self, fields=None, queryProps={}, filters=[],
-                      client=None, queryInfo=None):
+    def performSelect(self, fields, queryProps={}, filters=[], client=None):
         """
         Perform a select query.  The results are passed back as a dictionary
         with the following values:
@@ -266,8 +270,7 @@ class SQLAlchemyConnector(base.DatabaseConnector):
           data: a list with one entry per row of results.  Each entry is a list
         with one entry per column.
 
-        :param fields: the results from getFieldInfo.  If None, this may call
-                       getFieldInfo.
+        :param fields: the results from getFieldInfo.
         :param queryProps: general query properties, including limit, offset,
                            and sort.
         :param filters: a list of filters to apply.
@@ -276,8 +279,6 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         :return: the results of the query.  See above.
         """
         if queryProps.get('fields') is None:
-            if not fields:
-                fields = self.getFieldInfo()
             queryProps['fields'] = [field['name'] for field in fields]
         result = {
             'limit': queryProps.get('limit'),

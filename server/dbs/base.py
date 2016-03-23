@@ -50,23 +50,24 @@ FilterOperators = {
     'not_regex': 'not_regex',
     'notregex': 'not_regex',
     '!~': 'not_regex',
-    'notsearch': 'not_search',
+    'not_search': 'not_search',
     'notsearch': 'not_search',
     '!~*': 'not_search',
     'is': 'is',
     'not_is': 'not_is',
     'notis': 'not_is',
     'isnot': 'not_is',
+    'is_not': 'not_is',
 }
 DatatypeOperators = {
-    'array': {'in', 'notin'},
-    'boolean': {'eq', 'ne', 'in', 'notin'},
-    'date': {'eq', 'ne', 'gte', 'gt', 'lt', 'lte', 'in', 'notin'},
-    'duration': {'eq', 'ne', 'gte', 'gt', 'lt', 'lte', 'in', 'notin'},
-    'enum': {'eq', 'ne', 'in', 'notin'},
-    'number': {'eq', 'ne', 'gte', 'gt', 'lt', 'lte', 'in', 'notin'},
-    'string': {'eq', 'ne', 'gte', 'gt', 'lt', 'lte', 'in', 'notin', 'regex',
-               'notregex', 'search', 'notsearch'},
+    'array': {'in', 'not_in'},
+    'boolean': {'eq', 'ne', 'in', 'not_in'},
+    'date': {'eq', 'ne', 'gte', 'gt', 'lt', 'lte', 'in', 'not_in'},
+    'duration': {'eq', 'ne', 'gte', 'gt', 'lt', 'lte', 'in', 'not_in'},
+    'enum': {'eq', 'ne', 'in', 'not_in'},
+    'number': {'eq', 'ne', 'gte', 'gt', 'lt', 'lte', 'in', 'not_in'},
+    'string': {'eq', 'ne', 'gte', 'gt', 'lt', 'lte', 'in', 'not_in', 'regex',
+               'not_regex', 'search', 'not_search'},
 }
 
 
@@ -150,9 +151,9 @@ class DatabaseConnector(object):
         datatype = None
         if fieldList is None:
             fieldList = self.getFieldInfo()
-        for field in fieldList:
-            if field == field.get('name'):
-                datatype = field.get('datatype')
+        for fieldEntry in fieldList:
+            if field == fieldEntry.get('name'):
+                datatype = fieldEntry.get('datatype', fieldEntry.get('type'))
                 break
         if datatype in DatatypeOperators:
             return operator in DatatypeOperators[datatype]
@@ -170,14 +171,14 @@ class DatabaseConnector(object):
     def isField(self, name, fields=None, allowFunc=False):
         """
         Check if a specified name is a valid field.  If so, return the
-        canonical field name.
+        canonical field name or True if a function.
 
         :param name: the name to check.  This can also be a dictionary with
                      'field' or ('func' and optionally 'param').
         :param fields: the results from getFieldInfo.  If None, this calls
                        getFieldInfo.
         :param allowFunc: if True, also allow left functions.
-        :return: False if this is not a known field, otherwise the cannonical
+        :return: False if this is not a known field, iTrue if it is.
                  field name.
         """
         if fields is None:
@@ -185,15 +186,13 @@ class DatabaseConnector(object):
         if isinstance(name, dict):
             if 'field' in name:
                 name = name['field']
-            elif 'name' in name:
-                name = name['field']
-            elif ('func' in name or 'lfunc' in name) and allowFunc:
+            elif 'func' in name and allowFunc:
                 return self.isFunction(name, fields) is not False
             else:
                 return False
         for field in fields:
             if name == field.get('name'):
-                return True
+                return name
         return False
 
     def isFunction(self, func, fields=None):
@@ -215,13 +214,13 @@ class DatabaseConnector(object):
         :returns: False if func is not a function specification, otherwise the
                   canonical function dictionary.
         """
-        if not isinstance(func, dict):
+        if 'func' not in func:
             return False
         result = {
             'func': func['func'],
             'param': []
         }
-        param = func.get('param', [])
+        param = func.get('param', func.get('params', []))
         if not isinstance(param, (list, tuple)):
             param = [param]
         for entry in param:
@@ -230,10 +229,10 @@ class DatabaseConnector(object):
             else:
                 if 'value' in entry:
                     entry = {'value': entry['value']}
-                elif 'field' in entry or 'name' in entry:
-                    if not self.isField(entry.get('field', entry.get('name'))):
+                elif 'field' in entry:
+                    if not self.isField(entry.get('field')):
                         return False
-                    entry = {'field': entry.get('field', entry.get('name'))}
+                    entry = {'field': self.isField(entry.get('field'))}
                 else:
                     entry = self.isFunction(entry)
                     if entry is False:
@@ -241,8 +240,7 @@ class DatabaseConnector(object):
             result['param'].append(entry)
         return result
 
-    def performSelect(self, fields=None, queryProps={}, filters=[],
-                      client=None, queryInfo=None):
+    def performSelect(self, fields=[], queryProps={}, filters=[], client=None):
         """
         Perform a select query.  The results are passed back as a dictionary
         with the following values:
@@ -254,8 +252,7 @@ class DatabaseConnector(object):
           data: a list with one entry per row of results.  Each entry is a list
         with one entry per column.
 
-        :param fields: the results from getFieldInfo.  If None, this may call
-                       getFieldInfo.
+        :param fields: the results from getFieldInfo.
         :param queryProps: general query properties, including limit, offset,
                            sort, fields, wait, poll, and initwait.
         :param filters: a list of filters to apply.
@@ -264,8 +261,6 @@ class DatabaseConnector(object):
         :return: the results of the query.  See above.
         """
         if queryProps.get('fields') is None:
-            if not fields:
-                fields = self.getFieldInfo()
             queryProps['fields'] = [field['name'] for field in fields]
         return {
             'limit': queryProps.get('limit'),
@@ -296,7 +291,7 @@ class DatabaseConnector(object):
         if not wait:
             return self.performSelect(fields, queryProps, *args, **kwargs)
         if queryProps.get('initwait'):
-            time.sleep(queryProps.get('initwait'))
+            time.sleep(queryProps['initwait'])
         poll = queryProps.get('poll', 10)
 
         starttime = time.time()
@@ -313,23 +308,6 @@ class DatabaseConnector(object):
             time.sleep(max(min(poll, starttime + wait - curtime), poll * 0.5))
             result = self.performSelect(fields, queryProps, *args, **kwargs)
         return result
-
-    def prepareSelect(self, fields=None, queryProps={}, filters=[],
-                      client=None):
-        """
-        Prepare to perform a select query.
-
-        :param fields: the results from getFieldInfo.  If None, this may call
-                       getFieldInfo.
-        :param queryProps: general query properties, including limit, offset,
-                           sort, fields, wait, poll, and initwait.
-        :param filters: a list of filters to apply.
-        :param client: if a client is specified, a previous query made by this
-                       client can be cancelled.
-        :return: an object with query information that can be used by
-                 performSelect or performSelectWithPolling.
-        """
-        return None
 
     @staticmethod
     def validate(*args, **kwargs):
