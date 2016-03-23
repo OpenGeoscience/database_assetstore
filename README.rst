@@ -62,13 +62,34 @@ The ``GET`` ``item/{id}/database/select`` endpoint has numerous options:
   * ``[{"field": "town", "operator": "eq", "value": "BOSTON"}]`` - the same filter as the previous one, just constructed differently.
   * ``[{"lvalue": "BOSTON", "value": {"field": "town"}}]`` - yet another way to construct the same filter.
   * ``[{"func": "lower", "param": [{"field": "town"}], "value": "boston"}]`` - the lower-case version of the town field must equal "boston".
+  * ``[["pop2010", ">", 100000], {"field": "town", "operator": "ne", "value": "BOSTON"}]`` - the population in 2010 must be greater than 100,000, but don't mention Boston.
 
+* *format* - data can be returned as a list of list, where each entry is a list of the returned fields, or as a list of dictionaries, where each entry is a map of the field names and the values.  The ``list`` format is more efficient.  The results are identical except for the data representation.
 
+* *clientid* - an optional client ID can be specified with each request.  If this is included, and there is a pending select request from the same client ID, the pending request will be cancelled if possible.  This can be used when a client no longer needs the data from a first request because the new request will replace it.
+
+* *wait* - if the data source is being actively changed, select can poll it periodically until there is data available.  If specified, this is a duration in seconds to poll the data.  As soon as data is found, it is returned.  If no data is found, the results are the same as not using wait.
+
+* *poll* - if *wait* is used, this is the interval in seconds to check if data has changed based on the other select parameters.  Making this value too small will produce a high load on the database server.
+
+* *initwait* - if *wait* is used, don't check for data for this duration in seconds, then start polling.  This can be used to reduce server load.
 
 Database Functions
 ------------------
 
 The ``sort``, ``fields``, and ``filters`` select parameters can use database functions.  Only non-internal, non-volatile functions are permitted.  For instance, when using Postgresql, you cannot use ``pg_*`` functions, nor a function like ``nextval``.
+
+Functions can be nested -- a function can be used as the parameter of another function.
+
+When using a Postgres database, many Postgres operations are exposed as functions.  For instance, using `float8mul` allows double-precision multiplication.
+
+If a function takes a single parameter, the ``param`` value can be a single item.  Otherwise, it is a list of the values for the function.
+
+Anywhere a function can be used (which includes the parameters of another function), a field (column) or a specified value can be used instead: ``{"field": (name of field)`` or ``{"value": (value)}``.
+
+Here is example of a filter with a nested function (using PostGIS functions):
+
+``[{"func": "st_intersects", "param": [{"func": "st_setsrid", "param": [{"func": "st_makepoint", "param": [-72, 42.36]}, 4326]}, {"func": "st_transform", "param": [{"field": "geom"}, 4326]}], "operator": "is", "value": true}]``
 
 
 .. _Girder: https://github.com/girder/girder
