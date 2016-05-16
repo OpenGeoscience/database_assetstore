@@ -44,7 +44,6 @@ class MongoConnector(base.DatabaseConnector):
         self.conn = None
 
     def performSelect(self, fields, queryProps={}, filters=[], client=None):
-        print "hiiii"
         self.connect()
 
         result = super(MongoConnector, self).performSelect(fields, queryProps, filters)
