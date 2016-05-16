@@ -22,6 +22,18 @@ from pymongo import MongoClient
 from . import base
 
 
+def inferFields(records):
+    fields = set()
+    for r in records:
+        for field in r:
+            fields.add(field)
+    return list(fields)
+
+
+def convertFields(headers, row):
+    return map(lambda field: row.get(field), headers)
+
+
 class MongoConnector(base.DatabaseConnector):
     name = 'mongo'
 
@@ -64,7 +76,11 @@ class MongoConnector(base.DatabaseConnector):
             if target is not None:
                 opts[target] = v
 
-        result['data'] = list(coll.find(**opts))
+        results = list(coll.find(**opts))
+        headers = inferFields(results)
+        results = [convertFields(headers, row) for row in results]
+
+        result['data'] = results
 
         self.disconnect()
 
