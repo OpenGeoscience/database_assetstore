@@ -22,3 +22,4 @@ from base import (getDBConnectorClass, getDBConnector,   # noqa
                   DatabaseConnectorException)
 import sqlalchemydb  # noqa
 import postgres_sqlalchemy  # noqa
+import mongo # noqa
