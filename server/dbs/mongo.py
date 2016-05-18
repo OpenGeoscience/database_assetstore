@@ -21,6 +21,8 @@ from pymongo import MongoClient
 
 from . import base
 
+from girder.api.rest import RestException
+
 
 def inferFields(records):
     fields = set()
@@ -48,6 +50,21 @@ class MongoConnector(base.DatabaseConnector):
 
         self.initialized = True
 
+    def _applyFilter(self, clauses, filt):
+        operator = filt['operator']
+        operator = base.FilterOperators.get(operator)
+
+        if operator in ['eq', 'ne']:
+            field = filt['field']
+            value = filt['value']
+            operator = '$' + operator
+
+            clauses.append({field: {operator: value}})
+        else:
+            raise RestException('operator %s unimplemented' % (operator))
+
+        return clauses
+
     def connect(self):
         self.conn = MongoClient(self.databaseUrl)
 
@@ -61,6 +78,10 @@ class MongoConnector(base.DatabaseConnector):
         result = super(MongoConnector, self).performSelect(fields, queryProps, filters)
         coll = self.conn[self.database][self.collection]
 
+        filterQueryClauses = []
+        for filt in filters:
+            filterQueryClauses = self._applyFilter(filterQueryClauses, filt)
+
         opts = {}
         for k, v in queryProps.iteritems():
             target = None
@@ -70,11 +91,16 @@ class MongoConnector(base.DatabaseConnector):
                     v = None
             elif k == 'offset':
                 target = 'skip'
-            elif k in ['filter', 'limit', 'no_cursor_timeout', 'cursor_type', 'sort', 'allow_partial_results', 'oplog_replay', 'modifiers']:
+            elif k in ['limit', 'no_cursor_timeout', 'cursor_type', 'sort', 'allow_partial_results', 'oplog_replay', 'modifiers']:
                 target = k
 
             if target is not None:
                 opts[target] = v
+
+        if len(filterQueryClauses) > 0:
+            opts['filter'] = {'$and': filterQueryClauses}
+        elif 'filter' in opts:
+            del opts['filter']
 
         results = list(coll.find(**opts))
         headers = inferFields(results)
