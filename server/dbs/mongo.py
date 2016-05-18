@@ -86,6 +86,20 @@ class MongoConnector(base.DatabaseConnector):
 
         return result
 
+    def getFieldInfo(self):
+        self.connect()
+        coll = self.conn[self.database][self.collection]
+
+        results = coll.find()
+        headers = inferFields(results)
+
+        fieldInfo = []
+        for h in headers:
+            fieldInfo.append({'name': h,
+                              'type': 'unknown'})
+
+        return fieldInfo
+
     @staticmethod
     def validate(url=None, database=None, collection=None, **kwargs):
         return url and database and collection
