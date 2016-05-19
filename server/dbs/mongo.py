@@ -54,7 +54,7 @@ class MongoConnector(base.DatabaseConnector):
         operator = filt['operator']
         operator = base.FilterOperators.get(operator)
 
-        if operator in ['eq', 'ne']:
+        if operator in ['eq', 'ne', 'lt', 'gte']:
             field = filt['field']
             value = filt['value']
             operator = '$' + operator
