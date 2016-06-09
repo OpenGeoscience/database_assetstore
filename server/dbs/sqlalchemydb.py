@@ -304,10 +304,20 @@ class SQLAlchemyConnector(base.DatabaseConnector):
             query = query.limit(int(queryProps['limit']))
         if 'offset' in queryProps:
             query = query.offset(int(queryProps['offset']))
-        log.info('Query: %s', query.statement)
-        result['data'] = list(query.values(*[
-            self._convertFieldOrFunction(field)
-            for field in queryProps['fields']]))
+        columns = [self._convertFieldOrFunction(field)
+                   for field in queryProps['fields']]
+        # Clone the query and set it to return the columns we are interested
+        # in.  Using   result['data'] = list(query.values(*columns))   is more
+        # compact and skips one internal _clone call, but doesn't allow logging
+        # the actual sql used.  with_entities clears the columns we are
+        # selecting (it defaults to all of the native table columns), and
+        # add_columns puts back just what we want, including expressions.
+        query = query.with_entities(*[])
+        query = query.add_columns(*columns)
+        log.info('Query: %s', ' '.join(str(query.statement.compile(
+            bind=sess.get_bind(),
+            compile_kwargs={'literal_binds': True})).split()))
+        result['data'] = list(query)
         self.disconnect(sess, client)
         return result
 

@@ -75,7 +75,8 @@ class MongoConnector(base.DatabaseConnector):
     def performSelect(self, fields, queryProps={}, filters=[], client=None):
         self.connect()
 
-        result = super(MongoConnector, self).performSelect(fields, queryProps, filters)
+        result = super(MongoConnector, self).performSelect(
+            fields, queryProps, filters)
         coll = self.conn[self.database][self.collection]
 
         filterQueryClauses = []
@@ -91,7 +92,8 @@ class MongoConnector(base.DatabaseConnector):
                     v = None
             elif k == 'offset':
                 target = 'skip'
-            elif k in ['limit', 'no_cursor_timeout', 'cursor_type', 'sort', 'allow_partial_results', 'oplog_replay', 'modifiers']:
+            elif k in ['limit', 'no_cursor_timeout', 'cursor_type', 'sort',
+                       'allow_partial_results', 'oplog_replay', 'modifiers']:
                 target = k
 
             if target is not None:
