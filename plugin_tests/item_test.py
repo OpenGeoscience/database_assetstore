@@ -780,19 +780,22 @@ class ItemTest(base.TestCase):
         self.assertStatusOk(resp)
         self.assertNotEqual(sessions['test']['session'], last['session'])
         # Send a slow query in a thread.
-        params['fields'] = json.dumps([
+        slowParams = params.copy()
+        slowParams['fields'] = json.dumps([
             'town',
-            {'func': 'st_difference', 'param': [
+            {'func': 'st_hausdorffdistance', 'param': [
                 {'func': 'st_minimumboundingcircle', 'param': {
                     'field': 'geom'}},
-                {'field': 'geom'}]},
+                {'field': 'geom'},
+                0.03]},
         ])
+        slowParams['limit'] = 500
         slowResults = {}
 
         def slowQuery(params):
             try:
                 self.request(path='/item/%s/database/select' % (
-                    itemId, ), user=self.user, params=params)
+                    itemId, ), user=self.user, params=slowParams)
             except Exception as exc:
                 slowResults['exc'] = exc
 
@@ -803,7 +806,6 @@ class ItemTest(base.TestCase):
         # Wait for the query to start
         while not sessions['test']['used'] and slow.is_alive():
             time.sleep(0.05)
-        del params['fields']
         # Sending a normal request should cancel the slow one and respond
         # promptly
         resp = self.request(path='/item/%s/database/select' % (
