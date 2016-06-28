@@ -19,6 +19,7 @@
 
 import json
 import os
+import random
 import threading
 import time
 
@@ -779,7 +780,8 @@ class ItemTest(base.TestCase):
             itemId, ), user=self.user, params=params)
         self.assertStatusOk(resp)
         self.assertNotEqual(sessions['test']['session'], last['session'])
-        # Send a slow query in a thread.
+        # Send a slow query in a thread.  Use a random number as part of the
+        # query to prevent caching of the results.
         slowParams = params.copy()
         slowParams['fields'] = json.dumps([
             'town',
@@ -787,7 +789,7 @@ class ItemTest(base.TestCase):
                 {'func': 'st_minimumboundingcircle', 'param': {
                     'field': 'geom'}},
                 {'field': 'geom'},
-                0.03]},
+                0.03 + 0.01 * random.random()]},
         ])
         slowParams['limit'] = 500
         slowResults = {}
