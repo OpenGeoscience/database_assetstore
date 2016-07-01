@@ -44,9 +44,11 @@ class MongoConnector(base.DatabaseConnector):
         if not self.validate(**kwargs):
             return
 
-        self.database = kwargs.get('database')
+        self.databaseName = kwargs.get('database')
         self.collection = kwargs.get('collection')
         self.databaseUrl = kwargs.get('url')
+
+        self.fieldInfo = None
 
         self.initialized = True
 
@@ -67,17 +69,21 @@ class MongoConnector(base.DatabaseConnector):
 
     def connect(self):
         self.conn = MongoClient(self.databaseUrl)
+        if self.databaseName:
+            self.database = self.conn[self.database]
+        else:
+            self.database = self.conn.get_default_database()
+        return self.database[self.collection]
 
     def disconnect(self):
         self.conn.close()
         self.conn = None
 
     def performSelect(self, fields, queryProps={}, filters=[], client=None):
-        self.connect()
+        coll = self.connect()
 
         result = super(MongoConnector, self).performSelect(
             fields, queryProps, filters)
-        coll = self.conn[self.database][self.collection]
 
         filterQueryClauses = []
         for filt in filters:
@@ -90,6 +96,10 @@ class MongoConnector(base.DatabaseConnector):
                 target = 'projection'
                 if v == []:
                     v = None
+                else:
+                    v = {field: True for field in v}
+                if '_id' not in v:
+                    v['_id'] = False
             elif k == 'offset':
                 target = 'skip'
             elif k in ['limit', 'no_cursor_timeout', 'cursor_type', 'sort',
@@ -104,9 +114,8 @@ class MongoConnector(base.DatabaseConnector):
         elif 'filter' in opts:
             del opts['filter']
 
-        results = list(coll.find(**opts))
-        headers = inferFields(results)
-        results = [convertFields(headers, row) for row in results]
+        results = coll.find(**opts)
+        results = [convertFields(result['fields'], row) for row in results]
 
         result['data'] = results
 
@@ -115,22 +124,46 @@ class MongoConnector(base.DatabaseConnector):
         return result
 
     def getFieldInfo(self):
-        self.connect()
-        coll = self.conn[self.database][self.collection]
+        if self.fieldInfo is None:
+            # cache the fieldInfo so we don't process all of the documents
+            # every time.
+            coll = self.connect()
 
-        results = coll.find()
-        headers = inferFields(results)
+            fields = {}
+            for result in coll.find():
+                fields.update(result)
+            headers = inferFields([fields])
 
-        fieldInfo = []
-        for h in headers:
-            fieldInfo.append({'name': h,
-                              'type': 'unknown'})
+            fieldInfo = []
+            for h in sorted(headers):
+                fieldInfo.append({'name': h,
+                                  'type': 'unknown'})
+            self.fieldInfo = fieldInfo
+        return self.fieldInfo
 
-        return fieldInfo
+    @staticmethod
+    def getTableList(url, **kwargs):
+        """
+        Get a list of known collections from the database.
+
+        :param url: url to connect to the database.
+        :returns: A list of known collections.
+        """
+        conn = MongoClient(url)
+        database = conn.get_default_database()
+        collections = database.collection_names(False)
+        return collections
 
     @staticmethod
     def validate(url=None, database=None, collection=None, **kwargs):
-        return url and database and collection
+        return url and collection
 
 
-base.registerConnectorClass(MongoConnector.name, MongoConnector)
+base.registerConnectorClass(MongoConnector.name, MongoConnector, {
+    'dialects': {
+        'mongodb': 'mongodb',
+        'mongo': 'mongodb',
+    },
+    'default_dialect': 'mongodb',
+    'priority': 0,
+})

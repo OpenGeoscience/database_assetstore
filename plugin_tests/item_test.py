@@ -180,7 +180,7 @@ class ItemTest(base.TestCase):
     def testItemDatabaseBadConnectors(self):
         from girder.plugins.girder_db_items import dbs
         self.assertIsNone(dbs.getDBConnector('test1', {'type': 'base'}))
-        dbs.base.registerConnectorClass('base', dbs.base.DatabaseConnector)
+        dbs.base.registerConnectorClass('base', dbs.base.DatabaseConnector, {})
         self.assertIsNone(dbs.getDBConnector('test1', {'type': 'base'}))
         del dbs.base._connectorClasses['base']
 
@@ -347,10 +347,9 @@ class ItemTest(base.TestCase):
         item[dbInfoKey]['url'] = ''
         self.model('item').save(item)
         dbs.base._connectorCache.pop(str(item['_id']), None)
-        resp = self.request(path='/item/%s/database/select' % (
-            itemId, ), user=self.admin, params=params)
-        self.assertStatus(resp, 400)
-        self.assertIn('Failed to connect', resp.json['message'])
+        with self.assertRaises(Exception):
+            resp = self.request(path='/item/%s/database/select' % (
+                itemId, ), user=self.admin, params=params)
 
     def testItemDatabaseSelectSort(self):
         itemId, itemId2 = self._setupDbItems()
@@ -848,7 +847,7 @@ class ItemTest(base.TestCase):
             def validate(*args, **kwargs):
                 return True
 
-        dbs.base.registerConnectorClass(TestConnector.name, TestConnector)
+        dbs.base.registerConnectorClass(TestConnector.name, TestConnector, {})
         itemId, itemId2 = self._setupDbItems({'type': 'test'})
         params = {}
         resp = self.request(path='/item/%s/database/select' % (

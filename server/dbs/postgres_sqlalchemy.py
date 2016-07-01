@@ -108,4 +108,13 @@ class PostgresSAConnector(SQLAlchemyConnector):
         return self.fields
 
 
-base.registerConnectorClass(PostgresSAConnector.name, PostgresSAConnector)
+base.registerConnectorClass(PostgresSAConnector.name, PostgresSAConnector, {
+    'dialects': {
+        'postgresql': 'postgresql',
+        'postgres': 'postgresql',
+        'psql': 'postgresql',
+        'pgdb': 'postgresql'
+    },
+    'default_dialect': 'postgresql',
+    'priority': 0,
+})

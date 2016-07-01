@@ -1,0 +1,39 @@
+.g-body-title Import a table or collection from a database
+.g-dbas-import-instructions.
+  Use this page to import an existing table or collection from the Database
+  assetstore.
+
+form.g-dbas-import-form
+  .form-group(title="Each selected table will be added as a new item if it doesn't already exist in the destination")
+    label(for="g-dbas-table-name") Table or Collection name
+    select.input-sm.form-control#g-dbas-table-name(multiple=true)
+      option(value='', selected=true) All tables
+      for table in tableList
+        option(value=table)= table
+  .form-group(title='Optional.  This is either a field (column) name or a JSON list of multiple fields and directions for sorting (e.g., [["field1", 1], ["field2", -1]])')
+    label(for="g-dbas-sort-param") Default sort order
+    input.form-control.input-sm#g-dbas-sort-param(type="text")
+  .form-group(title='Optional.  A comma-separated or JSON list of fields (column names) to return')
+    label(for="g-dbas-fields-param") Default fields
+    input.form-control.input-sm#g-dbas-fields-param(type="text")
+  .form-group(title='Optional.  A JSON list of filters to apply to the data')
+    label(for="g-dbas-filters-param") Default filters
+    input.form-control.input-sm#g-dbas-filters-param(type="text")
+  .form-group(title='Optional.  The default number of rows to return')
+    label(for="g-dbas-limit-param") Default limit
+    input.form-control.input-sm#g-dbas-limit-param(type="text")
+  .form-group(title='The default format when downloading data')
+    label(for="g-dbas-format-param") Default format
+    select.input-sm.form-control#g-dbas-format-param
+      option(value='list', selected=true) JSON list of lists
+      option(value='dict') JSON list of objects
+      option(value='csv') CSV with header row
+  .form-group
+    label(for="g-dbas-import-dest-id") Destination Folder ID
+    input.form-control.input-sm#g-dbas-import-dest-id(
+      type="text"
+      placeholder="Existing folder ID to use as the destination")
+  .g-validation-failed-message
+  button.g-submit-dbas-import.btn.btn-success(type="submit")
+    i.icon-link-ext
+    |  Begin import

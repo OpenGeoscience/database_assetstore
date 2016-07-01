@@ -54,6 +54,9 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         #   current/static/libpq-connect.html#LIBPQ-PARAMKEYWORDS
         self.dbparams = kwargs.get('dbparams', {})
         self.databaseUrl = kwargs.get('url')
+        # If the prefix is sql://, use the default generic-sql dialect
+        if self.databaseUrl.startswith('sql://'):
+            self.databaseUrl = self.databaseUrl.split('sql://', 1)[1]
 
         # Additional parameters:
         #  idletime: seconds after which a connection is considered idle
@@ -258,6 +261,22 @@ class SQLAlchemyConnector(base.DatabaseConnector):
             self.fields = fields
         return fields
 
+    @staticmethod
+    def getTableList(url, dbparams={}, **kwargs):
+        """
+        Get a list of known tables from the database.
+
+        :param url: url to connect to the database.
+        :param dbparams: optional parameters to send to the connection.
+        :returns: A list of known tables.
+        """
+        # If the prefix is sql://, use the default generic-sql dialect
+        if url.startswith('sql://'):
+            url = url.split('sql://', 1)[1]
+        dbEngine = sqlalchemy.create_engine(url, **dbparams)
+        tables = list(dbEngine.table_names())
+        return tables
+
     def performSelect(self, fields, queryProps={}, filters=[], client=None):
         """
         Perform a select query.  The results are passed back as a dictionary
@@ -335,4 +354,14 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         return True
 
 
-base.registerConnectorClass(SQLAlchemyConnector.name, SQLAlchemyConnector)
+# Make a list of the dialects this module supports.  There is no default
+# dialect.
+_dialects = {
+    'dialects': {},
+    'priority': 1,
+}
+for dialect in getattr(sqlalchemy.dialects, '__all__', []):
+    _dialects['dialects'][dialect] = dialect
+
+base.registerConnectorClass(SQLAlchemyConnector.name, SQLAlchemyConnector,
+                            _dialects)

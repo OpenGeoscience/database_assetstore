@@ -22,214 +22,16 @@ import datetime
 import json
 import six
 
-from six.moves import range
-
 from girder.api import access
 from girder.api.v1.item import Item
 from girder.api.describe import describeRoute, Description
-from girder.api.rest import filtermodel, loadmodel, RestException
+from girder.api.rest import filtermodel, loadmodel, Resource, RestException
 from girder.models.model_base import AccessType
+from girder.utility import assetstore_utilities
+from girder.utility.progress import ProgressContext
 
 from . import dbs
-
-
-dbInfoKey = 'databaseMetadata'
-
-
-def convertSelectDataToDict(result):
-    """
-    Convert data in list format to dictionary format.  The column names are
-    used as the keys for each row.
-
-    :param result: the initial select results.
-    :returns: the results with data converted from a list of lists to a list of
-              dictionaries.
-    """
-    columns = {result['columns'][col]: col for col in result['columns']}
-    result['data'] = [{columns[i]: row[i] for i in range(len(row))}
-                      for row in result['data']]
-    result['format'] = 'dict'
-    return result
-
-
-def getFilters(conn, fields, filtersValue=None, queryParams={},
-               reservedParameters=[]):
-    """
-    Get a set of filters from a JSON list and/or from a set of query
-    parameters.  Only query parameters of the form (field)[_(operator)] where
-    the entire name is not in the reserver parameter list are processed.
-
-    :param conn: the database connector.  Used for validating fields.
-    :param fields: a list of known fields.  This is conn.getFieldInfo().
-    :filtersValue: a JSON object with the desired filters or None or empty
-                   string.
-    :queryParameters: a dictionary of query parameters that can add additional
-                      filters.
-    :reservedParameters: a list or set of reserver parameter names.
-    """
-    filters = []
-    if filtersValue not in (None, ''):
-        try:
-            filtersList = json.loads(filtersValue)
-        except ValueError:
-            filtersList = None
-        if not isinstance(filtersList, list):
-            raise RestException('The filters parameter must be a JSON list.')
-        for filter in filtersList:
-            filters.append(validateFilter(conn, fields, filter))
-    if queryParams:
-        for fieldEntry in fields:
-            field = fieldEntry['name']
-            for operator in dbs.FilterOperators:
-                param = field + ('' if operator is None else '_' + operator)
-                if param in queryParams and param not in reservedParameters:
-                    filters.append(validateFilter(conn, fields, {
-                        'field': field,
-                        'operator': operator,
-                        'value': queryParams[param]
-                    }))
-    return filters
-
-
-def getFieldsList(conn, fields=None, fieldsValue=None):
-    """
-    Get a list of fields from the query parameters.
-
-    :param conn: the database connector.  Used for validating fields.
-    :param fields: a list of known fields.  None to let the connector fetch
-                   them.
-    :param fieldsValue: either a comma-separated list, a JSON list, or None.
-    :returns: a list of fields or None.
-    """
-    if fieldsValue is None or fieldsValue == '':
-        return None
-    if '[' not in fieldsValue:
-        fieldsList = [field.strip() for field in fieldsValue.split(',')
-                      if len(field.strip())]
-    else:
-        try:
-            fieldsList = json.loads(fieldsValue)
-        except ValueError:
-            fieldsList = None
-        if not isinstance(fieldsList, list):
-            raise RestException('The fields parameter must be a JSON list or '
-                                'a comma-separated list of known field names.')
-    for field in fieldsList:
-        if not conn.isField(
-                field, fields,
-                allowFunc=getattr(conn, 'allowFieldFunctions', False)):
-            raise RestException('Fields must use known fields %r.')
-    return fieldsList
-
-
-def getSortList(conn, fields=None, sortValue=None, sortDir=None):
-    """
-    Get a list of sort fields and directions from the query parameters.
-
-    :param conn: the database connector.  Used for validating fields.
-    :param fields: a list of known fields.  None to let the connector fetch
-                   them.
-    :param sortValue: either a sort field, a JSON list, or None.
-    :param sortDir: if sortValue is a sort field, the sort direction.
-    :returns: a list of sort parameters or None.
-    """
-    if sortValue is None or sortValue == '':
-        return None
-    sort = None
-    if '[' not in sortValue:
-        if conn.isField(sortValue, fields) is not False:
-            sort = [(
-                sortValue,
-                -1 if sortDir in (-1, '-1', 'desc', 'DESC') else 1
-            )]
-    else:
-        try:
-            sortList = json.loads(sortValue)
-        except ValueError:
-            sortList = None
-        if not isinstance(sortList, list):
-            raise RestException('The sort parameter must be a JSON list or a '
-                                'known field name.')
-        sort = []
-        for entry in sortList:
-            if (isinstance(entry, list) and 1 <= len(entry) <= 2 and
-                    conn.isField(
-                        entry[0], fields,
-                        allowFunc=getattr(conn, 'allowSortFunctions', False))
-                    is not False):
-                sort.append((
-                    entry[0],
-                    -1 if len(entry) > 1 and entry[1] in
-                    (-1, '-1', 'desc', 'DESC') else 1
-                ))
-            elif (conn.isField(
-                    entry, fields,
-                    allowFunc=getattr(conn, 'allowSortFunctions', False))
-                    is not False):
-                sort.append((entry, 1))
-            else:
-                sort = None
-                break
-    if sort is None:
-        raise RestException('Sort must use known fields.')
-    return sort
-
-
-def validateFilter(conn, fields, filter):
-    """
-    Validate a filter by ensuring that the field exists, the operator is valid
-    for that field's data type, and that any additional properties are allowed.
-    Convert the filter into a fully populated dictionary style (one that has at
-    least field, operator, and value).
-
-    :param conn: the database connector.  Used for validating fields.
-    :param fields: a list of known fields.
-    :param filter: either a dictionary or a list or tuple with two to three
-                   components representing (field), [(operator),] (value).
-    :returns filter: the filter in dictionary-style.
-    """
-    if isinstance(filter, (list, tuple)):
-        if len(filter) < 2 or len(filter) > 3:
-            raise RestException('Filters in list format must have two or '
-                                'three components.')
-        if len(filter) == 2:
-            filter = {'field': filter[0], 'value': filter[1]}
-        else:
-            filter = {
-                'field': filter[0], 'operator': filter[1], 'value': filter[2]
-            }
-    if filter.get('operator') not in dbs.FilterOperators:
-        raise RestException('Unknown filter operator %r' % filter.get(
-            'operator'))
-    filter['operator'] = dbs.FilterOperators[filter.get('operator')]
-    if 'field' not in filter and 'lvalue' in filter:
-        filter['field'] = {'value': filter['lvalue']}
-    if 'field' not in filter and ('func' in filter or 'lfunc' in filter):
-        filter['field'] = {
-            'func': filter.get('func', filter.get('lfunc')),
-            'param': filter.get('param', filter.get('params', filter.get(
-                'lparam', filter.get('lparams'))))
-        }
-    if 'value' not in filter and 'rfunc' in filter:
-        filter['value'] = {
-            'func': filter['rfunc'],
-            'param': filter.get('rparam', filter.get('rparams'))
-        }
-    if 'field' not in filter:
-        raise RestException('Filter must specify a field or func.')
-    if (not conn.isField(
-            filter['field'], fields,
-            allowFunc=getattr(conn, 'allowFilterFunctions', False)) and
-            not isinstance(filter['field'], dict) and
-            'value' not in filter['field'] and 'func' not in filter['field']):
-        raise RestException('Filters must be on known fields.')
-    if not filter.get('value'):
-        raise RestException('Filters must have a value or rfunc.')
-    if not conn.checkOperatorDatatype(filter['field'], filter['operator'],
-                                      fields):
-        raise RestException('Cannot use %s operator on field %s' % (
-            filter['operator'], filter['field']))
-    return filter
+from .assetstore import dbInfoKey
 
 
 class DatabaseItemResource(Item):
@@ -388,7 +190,7 @@ class DatabaseItemResource(Item):
                '"field" and "value" keys must contain values, and "operator" '
                'and "function" keys can also be added.', required=False)
         .param('format', 'The format to return the data (default is '
-               'list).', required=False, enum=['list', 'dict'])
+               'list).', required=False, enum=list(dbs.dbFormatList))
         .param('clientid', 'A string to use for a client id.  If specified '
                'and there is an extant query to this end point from the same '
                'clientid, the extant query will be cancelled.', required=False)
@@ -444,48 +246,125 @@ class DatabaseItemResource(Item):
         dbinfo = item.get(dbInfoKey)
         if not dbinfo:
             raise RestException('Item is not a database link.')
-        conn = dbs.getDBConnector(item['_id'], dbinfo)
-        if not conn:
-            raise RestException('Failed to connect to database.')
-        fields = conn.getFieldInfo()
-        queryProps = {
-            'limit': int(params.get('limit', 50)),
-            'offset': int(params.get('offset', 0)),
-            'sort': getSortList(conn, fields, params.get('sort'),
-                                params.get('sortdir')),
-            'fields': getFieldsList(conn, fields, params.get('fields')),
-            'wait': float(params.get('wait', 0)),
-            'poll': float(params.get('poll', 10)),
-            'initwait': float(params.get('initwait', 0)),
-        }
-        client = params.get('clientid')
-        format = params.get('format')
-        filters = getFilters(conn, fields, params.get('filters'), params, {
-            'limit', 'offset', 'sort', 'sortdir', 'fields', 'wait', 'poll',
-            'initwait', 'clientid', 'filters', 'format'})
-        result = conn.performSelectWithPolling(fields, queryProps, filters,
-                                               client)
-        if result is None:
+        try:
+            resultFunc, mimeType = dbs.queryDatabase(
+                item['_id'], dbinfo, params)
+        except dbs.DatabaseQueryException as exc:
+            raise RestException(exc.message)
+        if resultFunc is None:
             cherrypy.response.status = 500
             return
-        if 'fields' in result:
-            result['columns'] = {
-                result['fields'][col] if not isinstance(
-                    result['fields'][col], dict) else
-                result['fields'][col].get('reference', 'column_' + str(col)):
-                col for col in range(len(result['fields']))}
-        result['datacount'] = len(result.get('data', []))
-        result['format'] = 'list'
-        if format == 'dict':
-            result = convertSelectDataToDict(result)
-
-        # We could let Girder convert the results into JSON, but it is
-        # marginally faster to dump the JSON ourselves, since we can
-        # exclude sorting and reduce whitespace.
-        def resultFunc():
-            yield json.dumps(result, check_circular=False,
-                             separators=(',', ':'), sort_keys=False,
-                             default=str)
-
-        cherrypy.response.headers['Content-Type'] = 'application/json'
+        cherrypy.response.headers['Content-Type'] = mimeType
         return resultFunc
+
+
+class DatabaseAssetstoreResource(Resource):
+    def __init__(self):
+        super(DatabaseAssetstoreResource, self).__init__()
+        self.resourceName = 'database_assetstore'
+        self.route('GET', (':id', 'tables'), self.getTables)
+        self.route('PUT', (':id', 'import'), self.importData)
+
+    def _getTableList(self, assetstore):
+        """
+        Given an assetstore, return the list of known tables or collections.
+
+        :param assetstore: the assetstore document.
+        :returns: a list of known tables.
+        """
+        cls = dbs.getDBConnectorClass(assetstore['database']['dbtype'])
+        return cls.getTableList(
+            assetstore['database']['uri'],
+            dbparams=assetstore['database'].get('dbparams', {}))
+
+    @access.admin
+    @loadmodel(model='assetstore')
+    @describeRoute(
+        Description('Get a list of tables or collections from a database.')
+        .notes('Only site administrators may use this endpoint.')
+        .param('id', 'The ID of the assetstore representing the Database.',
+               paramType='path')
+        .errorResponse()
+        .errorResponse('You are not an administrator.', 403)
+    )
+    def getTables(self, assetstore, params):
+        return self._getTableList(assetstore)
+
+    @access.admin
+    @loadmodel(model='assetstore')
+    @describeRoute(
+        Description('Import tables or collections from a database to files.')
+        .notes('Only site administrators may use this endpoint.')
+        .param('id', 'The ID of the assetstore representing the Database.',
+               paramType='path')
+        .param('parentId', 'The ID of the parent folder in the Girder data '
+               'hierarchy under which to import the files.')
+        .param('table', 'The name of a single table or collection or a JSON '
+               'list of table or collection names to import.  If not '
+               'specified, the database will be inspected and all tables or '
+               'collections will be imported.', required=False)
+        .param('sort', 'The default sort to use.  Either a field name or a '
+               'JSON list of fields and directions.', required=False)
+        .param('fields', 'The default fields to return.', required=False)
+        .param('filters', 'The default fields to return.', required=False)
+        .param('limit', 'The default limit of rows to return.', required=False,
+               dataType='int')
+        .param('format', 'The default format return.', required=False,
+               enum=list(dbs.dbFormatList))
+        .param('progress', 'Whether to record progress on this operation ('
+               'default=False)', required=False, dataType='boolean')
+        .errorResponse()
+        .errorResponse('You are not an administrator.', 403)
+    )
+    def importData(self, assetstore, params):
+        self.requireParams(('parentId'), params)
+
+        user = self.getCurrentUser()
+
+        parent = self.model('folder').load(params['parentId'], force=True,
+                                           exc=True)
+        tables = params.get('table')
+        if '[' in tables:
+            try:
+                tables = json.loads(tables)
+                if not isinstance(tables, list):
+                    raise ValueError()
+            except ValueError:
+                raise RestException('The table parameter must either be the '
+                                    'name of a table or a JSON list.')
+        else:
+            tables = [tables]
+        if params.get('limit'):
+            try:
+                params['limit'] = int(params['limit'])
+                if params['limit'] <= 0:
+                    raise ValueError()
+            except ValueError:
+                raise RestException('The limit must be a positive integer.')
+        if '' in tables or None in tables:
+            tables = self._getTableList(assetstore)
+        if not len(tables):
+            raise RestException(
+                'The list of tables must have at least one value.')
+        format = params.get('format')
+        if not format:
+            format = 'list'
+        if format not in dbs.dbFormatList:
+            raise RestException(
+                'Format must be one of %s.' % ', '.join(list(dbs.dbFormatList)))
+
+        progress = self.boolParam('progress', params, default=False)
+
+        adapter = assetstore_utilities.getAssetstoreAdapter(assetstore)
+
+        with ProgressContext(
+                progress, user=user,
+                title='Importing data from Database assetstore') as ctx:
+            adapter.importData(parent, 'folder', {
+                'tables': tables,
+                'sort': params.get('sort'),
+                'fields': params.get('fields'),
+                'filters': params.get('filters'),
+                'limit': params.get('limit') or None,
+                'format': format
+                }, ctx, user)
