@@ -190,8 +190,10 @@ class DatabaseItemResource(Item):
                '(operator) is optional.  If a dictionary, at least the '
                '"field" and "value" keys must contain values, and "operator" '
                'and "function" keys can also be added.', required=False)
-        .param('format', 'The format to return the data (default is '
-               'list).', required=False, enum=list(dbFormatList))
+        .param('format', 'The format to return the data (default=list).',
+               required=False, enum=list(dbFormatList))
+        .param('pretty', 'If true, add whitespace to JSON outputs '
+               '(default=false).', required=False, dataType='boolean')
         .param('clientid', 'A string to use for a client id.  If specified '
                'and there is an extant query to this end point from the same '
                'clientid, the extant query will be cancelled.', required=False)

@@ -214,7 +214,7 @@ def queryDatabase(id, dbinfo, params):
     format = params.get('format')
     filters = getFilters(conn, fields, params.get('filters'), params, {
         'limit', 'offset', 'sort', 'sortdir', 'fields', 'wait', 'poll',
-        'initwait', 'clientid', 'filters', 'format'})
+        'initwait', 'clientid', 'filters', 'format', 'pretty'})
     result = conn.performSelectWithPolling(fields, queryProps, filters,
                                            client)
     if result is None:
@@ -237,10 +237,12 @@ def queryDatabase(id, dbinfo, params):
         # We could let Girder convert the results into JSON, but it is
         # marginally faster to dump the JSON ourselves, since we can exclude
         # sorting and reduce whitespace.
+        pretty = params.get('pretty') == 'true'
+
         def resultFunc():
-            yield json.dumps(result, check_circular=False,
-                             separators=(',', ':'), sort_keys=False,
-                             default=str)
+            yield json.dumps(
+                result, check_circular=False, separators=(',', ':'),
+                sort_keys=pretty, default=str, indent=2 if pretty else None)
 
     return resultFunc, mimeType
 
