@@ -104,6 +104,51 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
                 cherrypy.response.headers['Content-Range'] = \
                     'bytes %d-%d/%d' % (offset, endByte - 1, file['size'])
 
+    def _getDownloadSize(self, file, resultFunc, offset, endByte):
+        """
+        Given a file and an output generator function, generate the output to
+        determine its total length, buffering the part that is needed for the
+        final output.  Adjust the file's size and the endByte value
+        accordingly.
+
+        :param file: the file used for the original generation.  Its size value
+                     is updated.
+        :param resultFunc: a function that produces a generator for the output.
+        :param offset: offset within the file information to output.
+        :param endByte: the maximum index to output (the output is
+                        data[offset:endByte]).
+        :returns: a new function that produces a generator for the output.
+        :returns: a new value for endByte.
+        """
+        totallen = 0
+        skipped = 0
+        output = six.BytesIO()
+        for chunk in resultFunc():
+            totallen += len(chunk)
+            if skipped < offset:
+                if skipped + len(chunk) <= offset:
+                    skipped += len(chunk)
+                    continue
+                else:
+                    chunk = chunk[offset - skipped:]
+                    skipped = offset
+            if endByte and totallen > endByte:
+                chunk = chunk[:endByte - totallen]
+            output.write(chunk)
+        output.seek(0)
+        file['size'] = totallen
+
+        def bufferResults():
+            while True:
+                chunk = output.read(65536)
+                if not chunk:
+                    break
+                yield chunk
+
+        if endByte is None or endByte > file['size']:
+            endByte = file['size']
+        return bufferResults, endByte
+
     def downloadFile(self, file, offset=0, headers=True, endByte=None,
                      contentDisposition=None, extraParameters=None, **kwargs):
         """
@@ -148,38 +193,22 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
         resultFunc, mimeType = queryDatabase(file.get('_id'), dbinfo, params)
         file['mimeType'] = mimeType
 
+        # If we have been asked for headers, recheck if we should have a range
+        # request
+        if headers and cherrypy.request.headers.get('Range'):
+            rangeHeader = cherrypy.lib.httputil.get_ranges(
+                cherrypy.request.headers.get('Range'), six.MAXSIZE)
+            if rangeHeader and len(rangeHeader):
+                # Currently we only support a single range.
+                offset, endByte = rangeHeader[0]
+
         # We often have to compute the response length.  This also handles
         # partial range requests (though not very efficiently, as each
         # request will requery the database, which may not be consistent).
         file['size'] = None
         if offset or endByte is not None:
-            totallen = 0
-            skipped = 0
-            output = six.BytesIO()
-            for chunk in resultFunc():
-                totallen += len(chunk)
-                if skipped < offset:
-                    if skipped + len(chunk) <= offset:
-                        skipped += len(chunk)
-                    else:
-                        chunk = chunk[offset - skipped:]
-                        skipped = offset
-                if endByte and totallen > endByte:
-                    chunk = chunk[:endByte - totallen]
-                output.write(chunk)
-            output.seek(0)
-            file['size'] = totallen
-
-            def bufferResults():
-                while True:
-                    chunk = output.read(65536)
-                    if not chunk:
-                        break
-                    yield chunk
-
-            resultFunc = bufferResults
-            if endByte is None or endByte > file['size']:
-                endByte = file['size']
+            resultFunc, endByte = self._getDownloadSize(
+                file, resultFunc, offset, endByte)
 
         if headers:
             self.setContentHeaders(file, offset, endByte, contentDisposition)
