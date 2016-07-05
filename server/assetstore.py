@@ -24,7 +24,8 @@ from six.moves import urllib
 from girder.models.model_base import GirderException, ValidationException
 from girder.utility.abstract_assetstore_adapter import AbstractAssetstoreAdapter
 
-from .dbs import getDBConnectorClassFromDialect, dbFormatList, queryDatabase
+from .dbs import getDBConnectorClassFromDialect
+from .query import dbFormatList, queryDatabase
 
 
 dbInfoKey = 'databaseMetadata'
@@ -123,7 +124,9 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
         :param contentDisposition: Value for Content-Disposition response
             header disposition-type value.
         :type contentDisposition: str or None
-        :type extraParameters: str or None
+        :type extraParameters: str or None.  url encoded query string of
+            parameters to add to the query.
+        :returns: a function that returns a generator for the data.
         """
         dbinfo = {
             'type': self.assetstore['database']['dbtype'],
@@ -142,7 +145,7 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
         if extraParameters:
             params.update({key: value for (key, value) in
                            urllib.parse.parse_qsl(extraParameters)})
-        resultFunc, mimeType = queryDatabase(file['_id'], dbinfo, params)
+        resultFunc, mimeType = queryDatabase(file.get('_id'), dbinfo, params)
         file['mimeType'] = mimeType
 
         # We often have to compute the response length.  This also handles
@@ -256,5 +259,18 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
                 'format': params.get('format'),
                 'limit': params.get('limit'),
             }
-            # Validate that we can download from this?  # ##DWM::
+            # Validate that we can perform queries by trying to download 1
+            # record from the file
+            downloadFunc = self.downloadFile(
+                file.copy(), headers=False, extraParameters='limit=1')
+            # Test the download without keeping it
+            [None for chunk in downloadFunc()]
+            try:
+                if (params.get('limit') not in (None, '') and
+                        int(params.get('limit')) <= 0):
+                    raise ValueError()
+            except ValueError:
+                raise GirderException(
+                    'limit must be empty or a positive integer')
+            # Now save the new file
             fileModel.save(file)

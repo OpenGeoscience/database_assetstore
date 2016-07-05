@@ -32,6 +32,7 @@ from girder.utility.progress import ProgressContext
 
 from . import dbs
 from .assetstore import dbInfoKey
+from .query import DatabaseQueryException, dbFormatList, queryDatabase
 
 
 class DatabaseItemResource(Item):
@@ -190,7 +191,7 @@ class DatabaseItemResource(Item):
                '"field" and "value" keys must contain values, and "operator" '
                'and "function" keys can also be added.', required=False)
         .param('format', 'The format to return the data (default is '
-               'list).', required=False, enum=list(dbs.dbFormatList))
+               'list).', required=False, enum=list(dbFormatList))
         .param('clientid', 'A string to use for a client id.  If specified '
                'and there is an extant query to this end point from the same '
                'clientid, the extant query will be cancelled.', required=False)
@@ -247,9 +248,9 @@ class DatabaseItemResource(Item):
         if not dbinfo:
             raise RestException('Item is not a database link.')
         try:
-            resultFunc, mimeType = dbs.queryDatabase(
+            resultFunc, mimeType = queryDatabase(
                 item['_id'], dbinfo, params)
-        except dbs.DatabaseQueryException as exc:
+        except DatabaseQueryException as exc:
             raise RestException(exc.message)
         if resultFunc is None:
             cherrypy.response.status = 500
@@ -310,7 +311,7 @@ class DatabaseAssetstoreResource(Resource):
         .param('limit', 'The default limit of rows to return.', required=False,
                dataType='int')
         .param('format', 'The default format return.', required=False,
-               enum=list(dbs.dbFormatList))
+               enum=list(dbFormatList))
         .param('progress', 'Whether to record progress on this operation ('
                'default=False)', required=False, dataType='boolean')
         .errorResponse()
@@ -349,9 +350,9 @@ class DatabaseAssetstoreResource(Resource):
         format = params.get('format')
         if not format:
             format = 'list'
-        if format not in dbs.dbFormatList:
+        if format not in dbFormatList:
             raise RestException(
-                'Format must be one of %s.' % ', '.join(list(dbs.dbFormatList)))
+                'Format must be one of %s.' % ', '.join(list(dbFormatList)))
 
         progress = self.boolParam('progress', params, default=False)
 
