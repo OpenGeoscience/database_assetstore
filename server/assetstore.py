@@ -175,23 +175,12 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
             parameters to add to the query.
         :returns: a function that returns a generator for the data.
         """
-        dbinfo = {
-            'type': self.assetstore['database']['dbtype'],
-            'url': self.assetstore['database']['uri'],
-            'table': file[dbInfoKey]['table'],
-            'collection': file[dbInfoKey]['table']
-        }
-        params = {
-            'sort': file[dbInfoKey].get('sort'),
-            'fields': file[dbInfoKey].get('fields'),
-            'filters': file[dbInfoKey].get('filters'),
-            'format': file[dbInfoKey].get('format'),
-            'offset': 0,
-            'limit': file[dbInfoKey].get('limit'),
-        }
+        dbinfo = getDbInfoForFile(file, self.assetstore)
+        params = getQueryParamsForFile(file, True)
         if extraParameters:
             params.update({key: value for (key, value) in
-                           urllib.parse.parse_qsl(extraParameters)})
+                           urllib.parse.parse_qsl(extraParameters,
+                                                  keep_blank_values=True)})
         resultFunc, mimeType = queryDatabase(file.get('_id'), dbinfo, params)
         file['mimeType'] = mimeType
 
@@ -325,6 +314,56 @@ def databaseFromUri(uri):
     return parts[3]
 
 
+def getDbInfoForFile(file, assetstore=None):
+    """
+    Given a file document, get the necessary information to connect to a
+    database.
+
+    :param file: the file document.
+    :param assetstore: the assetstore document, or None to get it from the
+                       file information.
+    :return: the dbinfo dictionary or None if the file is not in a database
+             assetstore.
+    """
+    if dbInfoKey not in file or 'assetstoreId' not in file:
+        return None
+    if assetstore is None:
+        assetstore = ModelImporter.model('assetstore').load(
+            file['assetstoreId'])
+    if assetstore.get('type') != AssetstoreType.DATABASE:
+        return None
+    dbinfo = {
+        'type': assetstore['database']['dbtype'],
+        'url': assetstore['database']['uri'],
+        # ##DWM:: database
+        'table': file[dbInfoKey]['table'],
+        'collection': file[dbInfoKey]['table']
+    }
+    return dbinfo
+
+
+def getQueryParamsForFile(file, setBlanks=False):
+    """
+    Given a file document, get the default query parameters.
+
+    :param file: the file document.
+    :param setBlanks: if True, set values even if blank, and include a zero
+                      offset.
+    :return: the default query parameters.
+    """
+    params = {}
+    if dbInfoKey not in file:
+        return params
+    if setBlanks:
+        params['offset'] = 0
+    for key in ('sort', 'fields', 'filters', 'format', 'limit'):
+        if key in file[dbInfoKey] or setBlanks:
+            params[key] = file[dbInfoKey].get(key)
+    if str(params.get('limit')).isdigit():
+        params['limit'] = int(params['limit'])
+    return params
+
+
 def validateFile(file):
     """
     If a file document contains the dbInfoKey, check if it is in a database
@@ -336,11 +375,11 @@ def validateFile(file):
     :param file: the file document.
     """
     if dbInfoKey not in file or 'assetstoreId' not in file:
-        return
+        return None
     assetstore = ModelImporter.model('assetstore').load(
         file['assetstoreId'])
     if assetstore.get('type') != AssetstoreType.DATABASE:
-        return
+        return None
     if not file[dbInfoKey].get('table'):
         raise ValidationException(
             'File database information entry must have a non-blank table '
@@ -350,4 +389,3 @@ def validateFile(file):
         raise ValidationException(
             'File database information must have a non-blank database value '
             'on an assetstore that doesn\'t specify a single database.')
-    # ##DWM::

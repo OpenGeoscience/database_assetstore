@@ -30,7 +30,7 @@ from girder.models.model_base import AccessType
 from girder.utility import assetstore_utilities
 from girder.utility.progress import ProgressContext
 
-from . import dbs
+from . import assetstore, dbs
 from .assetstore import dbInfoKey
 from .query import DatabaseQueryException, dbFormatList, queryDatabase
 
@@ -46,8 +46,6 @@ class DatabaseFileResource(File):
         apiRoot.file.route('GET', (':id', 'database'), self.getDatabaseLink)
         apiRoot.file.route('POST', (':id', 'database'),
                            self.createDatabaseLink)
-        apiRoot.file.route('DELETE', (':id', 'database'),
-                           self.deleteDatabaseLink)
         apiRoot.file.route('GET', (':id', 'database', 'fields'),
                            self.getDatabaseFields)
         apiRoot.file.route('PUT', (':id', 'database', 'refresh'),
@@ -98,38 +96,21 @@ class DatabaseFileResource(File):
         return self.model('file').save(file)
 
     @describeRoute(
-        Description('Delete file database link information.')
-        .param('id', 'The ID of the file.', paramType='path')
-    )
-    @access.user
-    @loadmodel(model='file', map={'id': 'file'}, level=AccessType.ADMIN)
-    def deleteDatabaseLink(self, file, params):
-        dbs.clearDBConnectorCache(file['_id'])
-        deleted = False
-        if dbInfoKey in file:
-            del file[dbInfoKey]
-            self.model('file').save(file)
-            deleted = True
-        return {
-            'deleted': deleted
-        }
-
-    @describeRoute(
         Description('Get information on the fields available for an file '
                     'database link.')
         .param('id', 'The ID of the file.', paramType='path')
         .errorResponse('ID was invalid.')
         .errorResponse('Read access was denied for the file.', 403)
-        .errorResponse('Item is not a database link.')
+        .errorResponse('File is not a database link.')
         .errorResponse('Failed to connect to database.')
     )
     @access.cookie
     @access.public
     @loadmodel(model='file', map={'id': 'file'}, level=AccessType.READ)
     def getDatabaseFields(self, file, params):
-        dbinfo = file.get(dbInfoKey)
+        dbinfo = assetstore.getDbInfoForFile(file)
         if not dbinfo:
-            raise RestException('Item is not a database link.')
+            raise RestException('File is not a database link.')
         conn = dbs.getDBConnector(file['_id'], dbinfo)
         if not conn:
             raise RestException('Failed to connect to database.')
@@ -144,14 +125,14 @@ class DatabaseFileResource(File):
                'database functions are altered.')
         .errorResponse('ID was invalid.')
         .errorResponse('Read access was denied for the file.', 403)
-        .errorResponse('Item is not a database link.')
+        .errorResponse('File is not a database link.')
     )
     @access.public
     @loadmodel(model='file', map={'id': 'file'}, level=AccessType.READ)
     def databaseRefresh(self, file, params):
-        dbinfo = file.get(dbInfoKey)
+        dbinfo = assetstore.getDbInfoForFile(file)
         if not dbinfo:
-            raise RestException('Item is not a database link.')
+            raise RestException('File is not a database link.')
         result = dbs.clearDBConnectorCache(file['_id'])
         return {
             'refreshed': result
@@ -219,7 +200,7 @@ class DatabaseFileResource(File):
                '"param".')
         .errorResponse('ID was invalid.')
         .errorResponse('Read access was denied for the file.', 403)
-        .errorResponse('Item is not a database link.')
+        .errorResponse('File is not a database link.')
         .errorResponse('Failed to connect to database.')
         .errorResponse('The sort parameter must be a JSON list or a known '
                        'field name.')
@@ -238,12 +219,14 @@ class DatabaseFileResource(File):
     @access.public
     @loadmodel(model='file', map={'id': 'file'}, level=AccessType.READ)
     def databaseSelect(self, file, params):
-        dbinfo = file.get(dbInfoKey)
+        dbinfo = assetstore.getDbInfoForFile(file)
         if not dbinfo:
-            raise RestException('Item is not a database link.')
+            raise RestException('File is not a database link.')
+        queryparams = assetstore.getQueryParamsForFile(file)
+        queryparams.update(params)
         try:
             resultFunc, mimeType = queryDatabase(
-                file['_id'], dbinfo, params)
+                file['_id'], dbinfo, queryparams)
         except DatabaseQueryException as exc:
             raise RestException(exc.message)
         if resultFunc is None:
