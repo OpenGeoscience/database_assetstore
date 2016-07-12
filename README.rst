@@ -1,28 +1,30 @@
-Database Items |build-status| |license-badge|
-=============================================
+Database Assetstore |build-status| |license-badge|
+==================================================
 A Girder_ Plugin
 ----------------
 
-A Girder plugin to provide access to database tables via extra item endpoints.
+A Girder plugin to provide access to database tables via assetstores and extra file endpoints.
 
-The ``POST`` ``item/{id}/database`` endpoint gets sent a JSON object that contains connection information, such as ``{"type": "sqlalchemy_postgres", "table": "(name of table)", "url": "postgresql://(postgres user):(postgres password)@(host name or IP address)/(name of database)"}``.  This could also more sophisticated connection information (for instance, a "dbparams" value with a dictionary of parameters for the connection, such as "connect_timeout").
+You can create an assetstore that references a database, and import Girder 'files' from that assetstore.  Each file connects to a table or collection in the database.  When downloaded, the file returns a default selection from the database.
 
-At the moment, the type must be "postgres", but this is set up to be extended to other database types.
+Alternately, the database assetstore file can be acted on directly.
 
-The ``GET`` ``item/{id}/database`` endpoint reports the values set with POST.
+Mongo and Postgres databases are supported fully.  Additional sql varients are supported if the appropriate sqlalchemy python modules are installed.
 
-The ``DELETE`` ``item/{id}/database`` endpoint clears the values set with POST.
+The ``POST`` ``file/{id}/database`` endpoint sets the default query parameters for the database table connection, including fields, filters, sort, format, and limit.  These are of the same form as used in the ``select`` endpoint.
 
-The ``GET`` ``item/{id}/database/fields`` endpoint reports a list of known field and their datatypes.
+The ``GET`` ``file/{id}/database`` endpoint reports the values set with POST.
 
-The ``GET`` ``item/{id}/database/select`` endpoint performs queries and returns data.  See its documentation for more information.  If the data in the database is actively changing, polling can be used to wait for data to appear.
+The ``GET`` ``file/{id}/database/fields`` endpoint reports a list of known fields and their datatypes.
 
-The ``PUT`` ``item/{id}/database/refresh`` endpoint should be used if the available fields (columns) or functions of a database have changed.
+The ``GET`` ``file/{id}/database/select`` endpoint performs queries and returns data.  See its documentation for more information.  If the data in the database is actively changing, polling can be used to wait for data to appear.
+
+The ``PUT`` ``file/{id}/database/refresh`` endpoint should be used if the available fields (columns) or functions of a database have changed.
 
 Select Options
 ==============
 
-The ``GET`` ``item/{id}/database/select`` endpoint has numerous options:
+The ``GET`` ``file/{id}/database/select`` endpoint has numerous options:
 
 * *limit* - how many results to return.  0 for none (this stills performs the select).  Default is 50.
 * *offset* - the offset to the first result to return.  Not really useful unless a sort is applied.
