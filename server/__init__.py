@@ -24,8 +24,8 @@ from girder.constants import AccessType, AssetstoreType
 from girder.utility.assetstore_utilities import setAssetstoreAdapter
 from girder.utility.model_importer import ModelImporter
 
-from .assetstore import DatabaseAssetstoreAdapter
-from .rest import DatabaseItemResource, dbInfoKey, DatabaseAssetstoreResource
+from . import assetstore
+from .rest import DatabaseFileResource, dbInfoKey, DatabaseAssetstoreResource
 
 
 def updateAssetstore(event):
@@ -55,12 +55,24 @@ def createAssetstore(event):
         event.preventDefault()
 
 
+def validateFile(event):
+    """
+    When a file is being validated, let the database assetstore check the
+    validation.
+
+    :param event: the validation event.  info is the file document.
+    """
+    assetstore.validateFile(event.info)
+
+
 def load(info):
     AssetstoreType.DATABASE = 'database'
-    setAssetstoreAdapter(AssetstoreType.DATABASE, DatabaseAssetstoreAdapter)
+    setAssetstoreAdapter(AssetstoreType.DATABASE,
+                         assetstore.DatabaseAssetstoreAdapter)
     events.bind('assetstore.update', 'database_assetstore', updateAssetstore)
     events.bind('rest.post.assetstore.before', 'database_assetstore',
                 createAssetstore)
+    events.bind('model.file.validate', 'worker', validateFile)
 
     (Assetstore.createAssetstore.description
         .param('dbtype', 'The database type (for Database type).',
@@ -70,9 +82,9 @@ def load(info):
 
     info['apiRoot'].database_assetstore = DatabaseAssetstoreResource()
 
-    DatabaseItemResource(info['apiRoot'])
+    DatabaseFileResource(info['apiRoot'])
 
-    ModelImporter.model('item').exposeFields(
+    ModelImporter.model('file').exposeFields(
         level=AccessType.ADMIN, fields=dbInfoKey)
-    ModelImporter.model('item').exposeFields(
+    ModelImporter.model('file').exposeFields(
         level=AccessType.SITE_ADMIN, fields=dbInfoKey)

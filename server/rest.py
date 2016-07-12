@@ -23,7 +23,7 @@ import json
 import six
 
 from girder.api import access
-from girder.api.v1.item import Item
+from girder.api.v1.file import File
 from girder.api.describe import describeRoute, Description
 from girder.api.rest import filtermodel, loadmodel, Resource, RestException
 from girder.models.model_base import AccessType
@@ -35,139 +35,131 @@ from .assetstore import dbInfoKey
 from .query import DatabaseQueryException, dbFormatList, queryDatabase
 
 
-class DatabaseItemResource(Item):
+class DatabaseFileResource(File):
 
     def __init__(self, apiRoot):
-        # Don't call the parent (Item) constructor, to avoid redefining routes,
+        # Don't call the parent (File) constructor, to avoid redefining routes,
         # but do call the grandparent (Resource) constructor
-        super(Item, self).__init__()
+        super(File, self).__init__()
 
-        self.resourceName = 'item'
-        apiRoot.item.route('GET', (':id', 'database'), self.getDatabaseLink)
-        apiRoot.item.route('POST', (':id', 'database'),
+        self.resourceName = 'file'
+        apiRoot.file.route('GET', (':id', 'database'), self.getDatabaseLink)
+        apiRoot.file.route('POST', (':id', 'database'),
                            self.createDatabaseLink)
-        apiRoot.item.route('DELETE', (':id', 'database'),
+        apiRoot.file.route('DELETE', (':id', 'database'),
                            self.deleteDatabaseLink)
-        apiRoot.item.route('GET', (':id', 'database', 'fields'),
+        apiRoot.file.route('GET', (':id', 'database', 'fields'),
                            self.getDatabaseFields)
-        apiRoot.item.route('PUT', (':id', 'database', 'refresh'),
+        apiRoot.file.route('PUT', (':id', 'database', 'refresh'),
                            self.databaseRefresh)
-        apiRoot.item.route('GET', (':id', 'database', 'select'),
+        apiRoot.file.route('GET', (':id', 'database', 'select'),
                            self.databaseSelect)
 
     @describeRoute(
-        Description('Get item database link information.')
-        .param('id', 'The ID of the item.', paramType='path')
+        Description('Get file database link information.')
+        .param('id', 'The ID of the file.', paramType='path')
         .errorResponse('ID was invalid.')
-        .errorResponse('Read access was denied for the item.', 403)
+        .errorResponse('Read access was denied for the file.', 403)
     )
     @access.user
-    @loadmodel(model='item', map={'id': 'item'}, level=AccessType.READ)
-    def getDatabaseLink(self, item, params):
-        if self.model('item').hasAccess(item, self.getCurrentUser(),
+    @loadmodel(model='file', map={'id': 'file'}, level=AccessType.READ)
+    def getDatabaseLink(self, file, params):
+        if self.model('file').hasAccess(file, self.getCurrentUser(),
                                         AccessType.WRITE):
-            return item.get(dbInfoKey)
+            return file.get(dbInfoKey)
         else:
-            return item.get(dbInfoKey) is not None
+            return file.get(dbInfoKey) is not None
 
     @describeRoute(
-        Description('Set or modify item database link information.')
-        .param('id', 'The ID of the item.', paramType='path')
+        Description('Set or modify file database link information.')
+        .param('id', 'The ID of the file.', paramType='path')
         .param('body', 'A JSON object containing the database information to '
-               'update. At a minimum this must include "type", "uri", and '
-               '"table".', paramType='body')
+               'update. At a minimum this must include "table" or '
+               '"collection".', paramType='body')
         .notes('Set database information fields to null to delete them.')
         .errorResponse('ID was invalid.')
         .errorResponse('Invalid JSON passed in request body.')
-        .errorResponse('Unknown database type.')
-        .errorResponse('Database information is invalid.')
-        .errorResponse('Write access was denied for the item.', 403)
+        .errorResponse('Write access was denied for the file.', 403)
     )
     @access.user
-    @loadmodel(model='item', map={'id': 'item'}, level=AccessType.ADMIN)
-    @filtermodel(model='item')
-    def createDatabaseLink(self, item, params):
-        dbs.clearDBConnectorCache(item['_id'])
+    @loadmodel(model='file', map={'id': 'file'}, level=AccessType.ADMIN)
+    @filtermodel(model='file')
+    def createDatabaseLink(self, file, params):
+        dbs.clearDBConnectorCache(file['_id'])
         dbinfo = self.getBodyJson()
-        if dbInfoKey not in item:
-            item[dbInfoKey] = {}
-        item[dbInfoKey].update(six.viewitems(dbinfo))
-        toDelete = [k for k, v in six.viewitems(item[dbInfoKey]) if v is None]
+        if dbInfoKey not in file:
+            file[dbInfoKey] = {}
+        file[dbInfoKey].update(six.viewitems(dbinfo))
+        toDelete = [k for k, v in six.viewitems(file[dbInfoKey]) if v is None]
         for key in toDelete:
-            del item[dbInfoKey][key]
-        item['updated'] = datetime.datetime.utcnow()
-        dbinfo = item[dbInfoKey]
-        # Generate type set from connector classes
-        connClass = dbs.getDBConnectorClass(dbinfo.get('type'))
-        if not connClass:
-            raise RestException('Unknown database type.')
-        if not connClass.validate(**dbinfo):
-            raise RestException('Database information is invalid.')
-        return self.model('item').save(item)
+            del file[dbInfoKey][key]
+        file['updated'] = datetime.datetime.utcnow()
+        dbinfo = file[dbInfoKey]
+        return self.model('file').save(file)
 
     @describeRoute(
-        Description('Delete item database link information.')
-        .param('id', 'The ID of the item.', paramType='path')
+        Description('Delete file database link information.')
+        .param('id', 'The ID of the file.', paramType='path')
     )
     @access.user
-    @loadmodel(model='item', map={'id': 'item'}, level=AccessType.ADMIN)
-    def deleteDatabaseLink(self, item, params):
-        dbs.clearDBConnectorCache(item['_id'])
+    @loadmodel(model='file', map={'id': 'file'}, level=AccessType.ADMIN)
+    def deleteDatabaseLink(self, file, params):
+        dbs.clearDBConnectorCache(file['_id'])
         deleted = False
-        if dbInfoKey in item:
-            del item[dbInfoKey]
-            self.model('item').save(item)
+        if dbInfoKey in file:
+            del file[dbInfoKey]
+            self.model('file').save(file)
             deleted = True
         return {
             'deleted': deleted
         }
 
     @describeRoute(
-        Description('Get information on the fields available for an item '
+        Description('Get information on the fields available for an file '
                     'database link.')
-        .param('id', 'The ID of the item.', paramType='path')
+        .param('id', 'The ID of the file.', paramType='path')
         .errorResponse('ID was invalid.')
-        .errorResponse('Read access was denied for the item.', 403)
+        .errorResponse('Read access was denied for the file.', 403)
         .errorResponse('Item is not a database link.')
         .errorResponse('Failed to connect to database.')
     )
     @access.cookie
     @access.public
-    @loadmodel(model='item', map={'id': 'item'}, level=AccessType.READ)
-    def getDatabaseFields(self, item, params):
-        dbinfo = item.get(dbInfoKey)
+    @loadmodel(model='file', map={'id': 'file'}, level=AccessType.READ)
+    def getDatabaseFields(self, file, params):
+        dbinfo = file.get(dbInfoKey)
         if not dbinfo:
             raise RestException('Item is not a database link.')
-        conn = dbs.getDBConnector(item['_id'], dbinfo)
+        conn = dbs.getDBConnector(file['_id'], dbinfo)
         if not conn:
             raise RestException('Failed to connect to database.')
         fields = conn.getFieldInfo()
         return fields
 
     @describeRoute(
-        Description('Refresh data associated with an item database link.')
-        .param('id', 'The ID of the item.', paramType='path')
+        Description('Refresh data associated with an file database link.')
+        .param('id', 'The ID of the file.', paramType='path')
         .notes('This may be necessary if fields (columns) within the linked '
                'table are added, dropped, or changed, or if the available '
                'database functions are altered.')
         .errorResponse('ID was invalid.')
-        .errorResponse('Read access was denied for the item.', 403)
+        .errorResponse('Read access was denied for the file.', 403)
         .errorResponse('Item is not a database link.')
     )
     @access.public
-    @loadmodel(model='item', map={'id': 'item'}, level=AccessType.READ)
-    def databaseRefresh(self, item, params):
-        dbinfo = item.get(dbInfoKey)
+    @loadmodel(model='file', map={'id': 'file'}, level=AccessType.READ)
+    def databaseRefresh(self, file, params):
+        dbinfo = file.get(dbInfoKey)
         if not dbinfo:
             raise RestException('Item is not a database link.')
-        result = dbs.clearDBConnectorCache(item['_id'])
+        result = dbs.clearDBConnectorCache(file['_id'])
         return {
             'refreshed': result
         }
 
     @describeRoute(
         Description('Get data from a database link.')
-        .param('id', 'The ID of the item.', paramType='path')
+        .param('id', 'The ID of the file.', paramType='path')
         .param('limit', 'Result set size limit (default=50).',
                required=False, dataType='int')
         .param('offset', 'Offset into result set (default=0).',
@@ -226,7 +218,7 @@ class DatabaseItemResource(Item):
                'dictionary, it can contain "value", "field", or "func" and '
                '"param".')
         .errorResponse('ID was invalid.')
-        .errorResponse('Read access was denied for the item.', 403)
+        .errorResponse('Read access was denied for the file.', 403)
         .errorResponse('Item is not a database link.')
         .errorResponse('Failed to connect to database.')
         .errorResponse('The sort parameter must be a JSON list or a known '
@@ -244,14 +236,14 @@ class DatabaseItemResource(Item):
     )
     @access.cookie
     @access.public
-    @loadmodel(model='item', map={'id': 'item'}, level=AccessType.READ)
-    def databaseSelect(self, item, params):
-        dbinfo = item.get(dbInfoKey)
+    @loadmodel(model='file', map={'id': 'file'}, level=AccessType.READ)
+    def databaseSelect(self, file, params):
+        dbinfo = file.get(dbInfoKey)
         if not dbinfo:
             raise RestException('Item is not a database link.')
         try:
             resultFunc, mimeType = queryDatabase(
-                item['_id'], dbinfo, params)
+                file['_id'], dbinfo, params)
         except DatabaseQueryException as exc:
             raise RestException(exc.message)
         if resultFunc is None:

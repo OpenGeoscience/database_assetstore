@@ -1,5 +1,6 @@
 import csv
 import json
+import six
 
 from girder.models.model_base import GirderException
 
@@ -73,10 +74,13 @@ def getFilters(conn, fields, filtersValue=None, queryParams={},
     """
     filters = []
     if filtersValue not in (None, ''):
-        try:
-            filtersList = json.loads(filtersValue)
-        except ValueError:
-            filtersList = None
+        if isinstance(filtersValue, six.string_types):
+            try:
+                filtersList = json.loads(filtersValue)
+            except ValueError:
+                filtersList = None
+        else:
+            filtersList = filtersValue
         if not isinstance(filtersList, list):
             raise DatabaseQueryException(
                 'The filters parameter must be a JSON list.')
@@ -108,14 +112,17 @@ def getFieldsList(conn, fields=None, fieldsValue=None):
     """
     if fieldsValue is None or fieldsValue == '':
         return None
-    if '[' not in fieldsValue:
+    if '[' not in fieldsValue and isinstance(fieldsValue, six.string_types):
         fieldsList = [field.strip() for field in fieldsValue.split(',')
                       if len(field.strip())]
     else:
-        try:
-            fieldsList = json.loads(fieldsValue)
-        except ValueError:
-            fieldsList = None
+        if isinstance(fieldsValue, six.string_types):
+            try:
+                fieldsList = json.loads(fieldsValue)
+            except ValueError:
+                fieldsList = None
+        else:
+            fieldsList = fieldsValue
         if not isinstance(fieldsList, list):
             raise DatabaseQueryException(
                 'The fields parameter must be a JSON list or a '
@@ -142,17 +149,20 @@ def getSortList(conn, fields=None, sortValue=None, sortDir=None):
     if sortValue is None or sortValue == '':
         return None
     sort = None
-    if '[' not in sortValue:
+    if '[' not in sortValue and isinstance(sortValue, six.string_types):
         if conn.isField(sortValue, fields) is not False:
             sort = [(
                 sortValue,
                 -1 if sortDir in (-1, '-1', 'desc', 'DESC') else 1
             )]
     else:
-        try:
-            sortList = json.loads(sortValue)
-        except ValueError:
-            sortList = None
+        if isinstance(sortValue, six.string_types):
+            try:
+                sortList = json.loads(sortValue)
+            except ValueError:
+                sortList = None
+        else:
+            sortList = sortValue
         if not isinstance(sortList, list):
             raise DatabaseQueryException(
                 'The sort parameter must be a JSON list or a known field '

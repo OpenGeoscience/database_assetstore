@@ -45,7 +45,7 @@ class MongoConnector(base.DatabaseConnector):
             return
 
         self.databaseName = kwargs.get('database')
-        self.collection = kwargs.get('collection')
+        self.collection = kwargs.get('collection', kwargs.get('table'))
         self.databaseUrl = kwargs.get('url')
 
         self.fieldInfo = None

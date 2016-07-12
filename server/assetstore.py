@@ -21,8 +21,10 @@ import cherrypy
 import six
 from six.moves import urllib
 
+from girder.constants import AssetstoreType
 from girder.models.model_base import GirderException, ValidationException
 from girder.utility.abstract_assetstore_adapter import AbstractAssetstoreAdapter
+from girder.utility.model_importer import ModelImporter
 
 from .dbs import getDBConnectorClassFromDialect
 from .query import dbFormatList, queryDatabase
@@ -303,3 +305,49 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
                     'limit must be empty or a positive integer')
             # Now save the new file
             fileModel.save(file)
+
+
+def databaseFromUri(uri):
+    """
+    Extract the name of the database from the database connection uri.  If
+    there is no database, return None.  The uri is of the form
+    (dialect)://[(user name)[:(password)]@](server)[:(port)]
+    [/[(database)[/]]][?(options)]
+
+    :param uri: the database connection uri.
+    :returns: the name of the database or None.
+    """
+    parts = uri.split('/')
+    if '://' not in uri:
+        parts = ['', ''] + parts
+    if len(parts) < 4 or not parts[3]:
+        return None
+    return parts[3]
+
+
+def validateFile(file):
+    """
+    If a file document contains the dbInfoKey, check if it is in a database
+    assetstore.  If so, check that the data in dbInfoKey is valid.  Note
+    that this won't check files without the dbInfoKey, even if they are in
+    the database assetstore to allow files to be created and then have
+    database information added to them.
+
+    :param file: the file document.
+    """
+    if dbInfoKey not in file or 'assetstoreId' not in file:
+        return
+    assetstore = ModelImporter.model('assetstore').load(
+        file['assetstoreId'])
+    if assetstore.get('type') != AssetstoreType.DATABASE:
+        return
+    if not file[dbInfoKey].get('table'):
+        raise ValidationException(
+            'File database information entry must have a non-blank table '
+            'value.')
+    if (not databaseFromUri(assetstore['database']['uri']) and
+            not file[dbInfoKey].get('database')):
+        raise ValidationException(
+            'File database information must have a non-blank database value '
+            'on an assetstore that doesn\'t specify a single database.')
+    # ##DWM::
