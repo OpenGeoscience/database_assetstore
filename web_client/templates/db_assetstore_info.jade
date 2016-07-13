@@ -9,4 +9,4 @@ div
   span  #{dbtypeNames[databaseInfo.dbtype]}
 div
   b Database URI:
-  span  #{databaseInfo.uri}
+  span  #{databaseInfo.uri.replace(/\/\/[^@\/]+@/, '//[user information]@')}
