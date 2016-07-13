@@ -1,15 +1,15 @@
 {
-  "name": "girder_db_items",
+  "name": "database_assetstore",
   "version": "0.1.0",
-  "description": "A Girder plugin to provide access to database tables via item endpoints.",
-  "homepage": "https://github.com/OpenGeoscience/girder_db_items",
+  "description": "A Girder plugin to provide access to database tables via assetstores and file endpoints.",
+  "homepage": "https://github.com/OpenGeoscience/database_assetstore",
   "bugs": {
-    "url": "https://github.com/OpenGeoscience/girder_db_items/issues"
+    "url": "https://github.com/OpenGeoscience/database_assetstore/issues"
   },
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/OpenGeoscience/girder_db_items.git"
+    "url": "https://github.com/OpenGeoscience/database_assetstore.git"
   },
   "dependencies": {},
   "devDependencies": {},

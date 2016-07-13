@@ -15,18 +15,18 @@
 ###############################################################################
 
 add_python_style_test(
-  python_static_analysis_girder_db_items
+  python_static_analysis_database_assetstore
   "${CMAKE_CURRENT_LIST_DIR}/server"
 )
 
 add_eslint_test(
-  js_static_analysis_girder_db_items_gruntfile
+  js_static_analysis_database_assetstore_gruntfile
   "${CMAKE_CURRENT_LIST_DIR}/Gruntfile.js"
 )
 add_eslint_test(
-  js_static_analysis_girder_db_items_source
+  js_static_analysis_database_assetstore_source
   "${CMAKE_CURRENT_LIST_DIR}/web_client"
 )
 
-add_python_test(file PLUGIN girder_db_items BIND_SERVER EXTERNAL_DATA "plugins/girder_db_items/testdb.sql.gz")
-add_web_client_test(example "${CMAKE_CURRENT_LIST_DIR}/plugin_tests/exampleSpec.js" PLUGIN girder_db_items)
+add_python_test(file PLUGIN database_assetstore BIND_SERVER EXTERNAL_DATA "plugins/database_assetstore/testdb.sql.gz")
+add_web_client_test(example "${CMAKE_CURRENT_LIST_DIR}/plugin_tests/exampleSpec.js" PLUGIN database_assetstore)

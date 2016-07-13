@@ -33,7 +33,7 @@ config.loadConfig()  # Must reload config to pickup correct port
 
 
 def setUpModule():
-    base.enabledPlugins.append('girder_db_items')
+    base.enabledPlugins.append('database_assetstore')
     base.startServer(False)
 
 
@@ -74,7 +74,7 @@ class FileTest(base.TestCase):
         self.assertStatusOk(resp)
         self.assetstore2 = resp.json
 
-        from girder.plugins.girder_db_items.assetstore import dbInfoKey
+        from girder.plugins.database_assetstore.assetstore import dbInfoKey
         self.file1 = self.model('file').createFile(
             name='file1', creator=self.admin, item=self.item1, size=0,
             assetstore=self.assetstore1, saveFile=False)
@@ -182,14 +182,14 @@ class FileTest(base.TestCase):
         self.assertEqual(resp.json, params)
 
     def testFileDatabaseBadConnectors(self):
-        from girder.plugins.girder_db_items import dbs
+        from girder.plugins.database_assetstore import dbs
         self.assertIsNone(dbs.getDBConnector('test1', {'type': 'base'}))
         dbs.base.registerConnectorClass('base', dbs.base.DatabaseConnector, {})
         self.assertIsNone(dbs.getDBConnector('test1', {'type': 'base'}))
         del dbs.base._connectorClasses['base']
 
     def testFileDatabaseBaseConnectorClass(self):
-        from girder.plugins.girder_db_items import dbs
+        from girder.plugins.database_assetstore import dbs
         conn = dbs.base.DatabaseConnector()
         res = conn.performSelect()
         self.assertEqual(res['data'], [])
@@ -737,7 +737,7 @@ class FileTest(base.TestCase):
         resp = self.request(path='/file/%s/database/select' % (
             fileId, ), user=self.user, params=params)
         self.assertStatusOk(resp)
-        from girder.plugins.girder_db_items import dbs
+        from girder.plugins.database_assetstore import dbs
         sessions = dbs.base._connectorCache[fileId].sessions
         # We should be tracking the a session for 'test'
         self.assertIn('test', sessions)
@@ -797,7 +797,7 @@ class FileTest(base.TestCase):
 
     def testFileDatabaseSelectPolling(self):
         # Create a test database connector so we can check polling
-        from girder.plugins.girder_db_items import dbs
+        from girder.plugins.database_assetstore import dbs
 
         dbInfo = {'queries': 0, 'data': [[1]]}
 
