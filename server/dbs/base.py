@@ -93,7 +93,7 @@ def getDBConnectorClassFromDialect(dialect, name=None):
     :param name: name of the DB connector.  If None, all DB connectors are
                  checked.
     :return: the preferred dialect name or None.
-    :return: the connector class name or None..
+    :return: the connector class name or None.
     """
     # Sort our classes by priority (lower is higher priority) and find the
     # first class that has the specified dialect.
@@ -166,6 +166,9 @@ class DatabaseConnectorException(GirderException):
 
 
 class DatabaseConnector(object):
+    # If a database connector can query available databases, set this to false
+    databaseNameRequired = True
+
     def __init__(self, *args, **kwargs):
         self.initialized = False
         self.allowFieldFunctions = False
@@ -206,7 +209,11 @@ class DatabaseConnector(object):
     @staticmethod
     def getTableList(url, **kwargs):
         """
-        Get a list of known table from the database.
+        Get a list of known databases, each of which has a list of known tables
+        from the database.  This is of the form [{'database': (database 1),
+        'tables': [...]}, {'database': (database 2), 'tables': [...]}, ...].
+        Each table entry is of the form {'table': (table 1), 'name': (name 1)}
+        and may contain additonal connection information, such as schema.
 
         :param url: url to connect to the database.
         :returns: A list of known tables.
@@ -363,3 +370,26 @@ class DatabaseConnector(object):
         :returns: True if the arguments should allow connecting to the db.
         """
         return False
+
+    # Enable and override to customize how data gets dumped to json
+    # @staticmethod
+    # def jsonDumps(*args, **kwargs):
+    #     return json.dumps(*args, **kwargs)
+
+
+def databaseFromUri(uri):
+    """
+    Extract the name of the database from the database connection uri.  If
+    there is no database, return None.  The uri is of the form
+    (dialect)://[(user name)[:(password)]@](server)[:(port)]
+    [/[(database)[/]]][?(options)]
+
+    :param uri: the database connection uri.
+    :returns: the name of the database or None.
+    """
+    parts = uri.split('/')
+    if '://' not in uri:
+        parts = ['', ''] + parts
+    if len(parts) < 4 or not parts[3]:
+        return None
+    return parts[3]

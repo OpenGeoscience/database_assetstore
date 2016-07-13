@@ -255,6 +255,43 @@ class DatabaseAssetstoreResource(Resource):
             assetstore['database']['uri'],
             dbparams=assetstore['database'].get('dbparams', {}))
 
+    def _parseTableList(self, tables, assetstore):
+        """
+        Given a list which can include plain strings and objects with
+        optionally database, name, and table, find the set of matching
+        databases and tables from the assetstore.
+
+        :param tables: the input list of table names, '', objects with
+            database and possibly name keys, and objects with a table key.
+        :param assetstore: the assetstore document.
+        :returns: the list of table references with database and other
+            parameters as needed.
+        """
+        all = '' in tables or None in tables
+        tables = [{'name': table} if isinstance(table, six.string_types)
+                  else table for table in tables if table != '']
+        results = [table for table in tables if table.get('table') and not all]
+        tables = [table for table in tables if not table.get('table')]
+        if not len(tables) and not all:
+            return results
+        tableList = self._getTableList(assetstore)
+        defaultDatabase = dbs.databaseFromUri(assetstore['database']['uri'])
+        for database in tableList:
+            for tableEntry in database['tables']:
+                use = all
+                for table in tables:
+                    if (database['database'] ==
+                            table.get('database', defaultDatabase) and
+                            (not table.get('name') or table.get('name') ==
+                             tableEntry.get('name', tableEntry['table']))):
+                        use = True
+                if use:
+                    entry = tableEntry.copy()
+                    if not defaultDatabase:
+                        entry['database'] = database['database']
+                    results.append(entry)
+        return results
+
     @access.admin
     @loadmodel(model='assetstore')
     @describeRoute(
@@ -271,16 +308,22 @@ class DatabaseAssetstoreResource(Resource):
     @access.admin
     @loadmodel(model='assetstore')
     @describeRoute(
-        Description('Import tables or collections from a database to files.')
+        Description('Import tables (also called collections) from a database '
+                    'assetstore to files.')
         .notes('Only site administrators may use this endpoint.')
-        .param('id', 'The ID of the assetstore representing the Database.',
+        .param('id', 'The ID of the assetstore representing the database(s).',
                paramType='path')
-        .param('parentId', 'The ID of the parent folder in the Girder data '
-               'hierarchy under which to import the files.')
-        .param('table', 'The name of a single table or collection or a JSON '
-               'list of table or collection names to import.  If not '
-               'specified, the database will be inspected and all tables or '
-               'collections will be imported.', required=False)
+        .param('parentId', 'The ID of the parent folder, collection, or user '
+               'in the Girder data hierarchy under which to import the files.')
+        .param('table', 'The name of a single table, or a JSON list.  Each '
+               'entry of the list is either a table name, an object with '
+               '\'database\' and \'name\' keys, or an object with at least a '
+               '\'table\' key.  If a table key is specified, the entire '
+               'object is used as the specification for table routing.  '
+               'Otherwise, if a database is specified without a name, all '
+               'tables from the database are imported.  If not specified or '
+               'an empty string is in the list, the assetstore will be '
+               'inspected and all tables will be imported.', required=False)
         .param('sort', 'The default sort to use.  Either a field name or a '
                'JSON list of fields and directions.', required=False)
         .param('fields', 'The default fields to return.', required=False)
@@ -299,8 +342,11 @@ class DatabaseAssetstoreResource(Resource):
 
         user = self.getCurrentUser()
 
-        parent = self.model('folder').load(params['parentId'], force=True,
-                                           exc=True)
+        parentType = params.get('parentType', 'folder')
+        if parentType not in ('user', 'collection', 'folder'):
+            raise RestException('Invalid parentType.')
+        parent = self.model(parentType).load(params['parentId'], force=True,
+                                             exc=True)
         tables = params.get('table')
         if '[' in tables:
             try:
@@ -320,7 +366,8 @@ class DatabaseAssetstoreResource(Resource):
             except ValueError:
                 raise RestException('The limit must be a positive integer.')
         if '' in tables or None in tables:
-            tables = self._getTableList(assetstore)
+            tables = ['']
+        tables = self._parseTableList(tables, assetstore)
         if not len(tables):
             raise RestException(
                 'The list of tables must have at least one value.')
@@ -338,7 +385,7 @@ class DatabaseAssetstoreResource(Resource):
         with ProgressContext(
                 progress, user=user,
                 title='Importing data from Database assetstore') as ctx:
-            adapter.importData(parent, 'folder', {
+            adapter.importData(parent, parentType, {
                 'tables': tables,
                 'sort': params.get('sort'),
                 'fields': params.get('fields'),

@@ -19,7 +19,8 @@
 
 from base import (   # noqa
     getDBConnectorClass, getDBConnector, getDBConnectorClassFromDialect,
-    clearDBConnectorCache, FilterOperators, DatabaseConnectorException)
+    clearDBConnectorCache, FilterOperators, DatabaseConnectorException,
+    databaseFromUri)
 import sqlalchemydb  # noqa
 import postgres_sqlalchemy  # noqa
 import mongo  # noqa

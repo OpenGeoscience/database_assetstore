@@ -17,6 +17,7 @@
 #  limitations under the License.
 ##############################################################################
 
+import bson.json_util
 from pymongo import MongoClient
 
 from . import base
@@ -38,15 +39,17 @@ def convertFields(headers, row):
 
 class MongoConnector(base.DatabaseConnector):
     name = 'mongo'
+    databaseNameRequired = False
 
     def __init__(self, *args, **kwargs):
         super(MongoConnector, self).__init__(*args, **kwargs)
         if not self.validate(**kwargs):
             return
 
-        self.databaseName = kwargs.get('database')
         self.collection = kwargs.get('collection', kwargs.get('table'))
         self.databaseUrl = kwargs.get('url')
+        self.databaseName = kwargs.get(
+            'database', base.databaseFromUri(self.databaseUrl))
 
         self.fieldInfo = None
 
@@ -70,7 +73,7 @@ class MongoConnector(base.DatabaseConnector):
     def connect(self):
         self.conn = MongoClient(self.databaseUrl)
         if self.databaseName:
-            self.database = self.conn[self.database]
+            self.database = self.conn[self.databaseName]
         else:
             self.database = self.conn.get_default_database()
         return self.database[self.collection]
@@ -144,19 +147,41 @@ class MongoConnector(base.DatabaseConnector):
     @staticmethod
     def getTableList(url, **kwargs):
         """
-        Get a list of known collections from the database.
+        Get a list of known databases, each of which has a list of known
+        collections from the database.  This is of the form [{'database':
+        (database 1), 'tables': [{'table': (collection 1)}, {'table':
+        (collection 2)}, ...]}, {'database': (database 2), 'tables': [...]},
+        ...]
+
+        :param url: url to connect to the database.
+        :returns: A list of known tables.
 
         :param url: url to connect to the database.
         :returns: A list of known collections.
         """
         conn = MongoClient(url)
-        database = conn.get_default_database()
-        collections = database.collection_names(False)
-        return collections
+        databaseName = base.databaseFromUri(url)
+        if databaseName is None:
+            databaseNames = conn.database_names()
+        else:
+            databaseNames = [databaseName]
+        results = []
+        for name in databaseNames:
+            database = conn[name]
+            results.append({
+                'database': name,
+                'tables': [{'table': collection, 'name': collection}
+                           for collection in database.collection_names(False)]
+            })
+        return results
 
     @staticmethod
     def validate(url=None, database=None, collection=None, **kwargs):
         return url and collection
+
+    @staticmethod
+    def jsonDumps(*args, **kwargs):
+        return bson.json_util.dumps(*args, **kwargs)
 
 
 base.registerConnectorClass(MongoConnector.name, MongoConnector, {

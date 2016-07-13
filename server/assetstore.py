@@ -26,7 +26,8 @@ from girder.models.model_base import GirderException, ValidationException
 from girder.utility.abstract_assetstore_adapter import AbstractAssetstoreAdapter
 from girder.utility.model_importer import ModelImporter
 
-from .dbs import getDBConnectorClassFromDialect
+from .dbs import getDBConnectorClassFromDialect, databaseFromUri, \
+    getDBConnectorClass
 from .query import dbFormatList, queryDatabase
 
 
@@ -62,6 +63,10 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
         if validatedDialect:
             info['uri'] = '%s://%s' % (validatedDialect, info['uri'])
         info['dbtype'] = validatedDbtype
+        connClass = getDBConnectorClass(info['dbtype'])
+        if connClass.databaseNameRequired and not databaseFromUri(info['uri']):
+            raise ValidationException(
+                'The specified database uri must include the database name.')
 
     def initUpload(self, upload):
         raise NotImplementedError('Database assetstores are read only.')
@@ -223,12 +228,22 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
 
     def importData(self, parent, parentType, params, progress, user, **kwargs):
         """
-        Import a list of tables or collections, each to a file within a
-        distinct item.
+        Import a list of tables, each to a file within a distinct item.  Each
+        table specification in the list is an object which must have a 'table'
+        key.  It may optionally have other connection information such as
+        'database' and 'schema'.  If there is a 'name' key, the name is used
+        for the item and file.  If there is a 'database' key, a subfolder is
+        created within the specified parent with that name.  If a user or
+        collection is specified for the top level and no database key is
+        specified, the default database name (from the assetstore) is used.
+        If the specific item and file already exists and is from the same
+        assetstore, it is updated.  If the specific item already exists and is
+        not from the same assetstore (or not marked that it was imported), an
+        error is given.
 
-        :param parent: The parent object to import into.  Must be a folder.
-        :param parentType: The model type of the parent object.  Ignored, as it
-            must be 'folder'.
+        :param parent: The parent object to import into.  Must be a folder,
+            user, or collection.
+        :param parentType: The model type of the parent object.
         :param params: Additional parameters required for the import process:
             tables: a list of tables to add.  If there is already an item with
                     an exact table name, it is updated.
@@ -242,43 +257,59 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
         :param user: The Girder user performing the import.
         :type user: dict or None
         """
+        defaultDatabase = databaseFromUri(self.assetstore['database']['uri'])
         itemModel = self.model('item')
         fileModel = self.model('file')
+        folderModel = self.model('folder')
         for table in params['tables']:
-            progress.update(message='Importing %s' % table)
+            if isinstance(table, six.string_types):
+                dbinfo = {'table': table}
+            else:
+                dbinfo = table.copy()
+            name = dbinfo.pop('name', dbinfo['table'])
+            progress.update(message='Importing %s' % name)
+            # Find or create a folder if needed
+            if 'database' not in dbinfo and parentType == 'folder':
+                folder = parent
+            else:
+                folderName = dbinfo.get('database', defaultDatabase)
+                folder = folderModel.findOne({
+                    'parentId': parent['_id'],
+                    'name': folderName,
+                    'parentCollection': parentType
+                })
+                if folder is None:
+                    folder = folderModel.createFolder(
+                        parent, folderName, parentType=parentType,
+                        creator=user)
             # Create an item if needed
             item = itemModel.findOne({
-                'folderId': parent['_id'],
-                'name': table
+                'folderId': folder['_id'],
+                'name': name
             })
             if item is None:
                 item = itemModel.createItem(
-                    name=table, creator=user, folder=parent)
+                    name=name, creator=user, folder=folder)
             # Create a file if needed
             file = fileModel.findOne({
-                'name': table,
+                'name': name,
                 'itemId': item['_id']
             })
             if file is None:
                 file = fileModel.createFile(
-                    creator=user, item=item, name=table, size=0,
+                    creator=user, item=item, name=name, size=0,
                     assetstore=self.assetstore,
                     mimeType=dbFormatList.get(params.get('format')),
                     saveFile=False)
             if file.get(dbInfoKey) and not file[dbInfoKey].get('imported'):
                 raise GirderException(
                     'A file for table %s is present but cannot be updated '
-                    'because it wasn\'t imported.' % table)
+                    'because it wasn\'t imported.' % name)
             # Set or replace the database parameters for the file
-            file[dbInfoKey] = {
-                'imported': True,
-                'table': table,
-                'sort': params.get('sort'),
-                'fields': params.get('fields'),
-                'filters': params.get('filters'),
-                'format': params.get('format'),
-                'limit': params.get('limit'),
-            }
+            dbinfo['imported'] = True
+            for key in ('sort', 'fields', 'filters', 'format', 'limit'):
+                dbinfo[key] = params.get(key)
+            file[dbInfoKey] = dbinfo
             # Validate that we can perform queries by trying to download 1
             # record from the file
             downloadFunc = self.downloadFile(
@@ -294,24 +325,6 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
                     'limit must be empty or a positive integer')
             # Now save the new file
             fileModel.save(file)
-
-
-def databaseFromUri(uri):
-    """
-    Extract the name of the database from the database connection uri.  If
-    there is no database, return None.  The uri is of the form
-    (dialect)://[(user name)[:(password)]@](server)[:(port)]
-    [/[(database)[/]]][?(options)]
-
-    :param uri: the database connection uri.
-    :returns: the name of the database or None.
-    """
-    parts = uri.split('/')
-    if '://' not in uri:
-        parts = ['', ''] + parts
-    if len(parts) < 4 or not parts[3]:
-        return None
-    return parts[3]
 
 
 def getDbInfoForFile(file, assetstore=None):
@@ -335,10 +348,11 @@ def getDbInfoForFile(file, assetstore=None):
     dbinfo = {
         'type': assetstore['database']['dbtype'],
         'url': assetstore['database']['uri'],
-        # ##DWM:: database
         'table': file[dbInfoKey]['table'],
         'collection': file[dbInfoKey]['table']
     }
+    if 'database' in file[dbInfoKey]:
+        dbinfo['database'] = file[dbInfoKey]['database']
     return dbinfo
 
 

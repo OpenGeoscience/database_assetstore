@@ -18,6 +18,7 @@
 ##############################################################################
 
 import sqlalchemy
+import sqlalchemy.engine.reflection
 import sqlalchemy.orm
 import time
 
@@ -264,7 +265,9 @@ class SQLAlchemyConnector(base.DatabaseConnector):
     @staticmethod
     def getTableList(url, dbparams={}, **kwargs):
         """
-        Get a list of known tables from the database.
+        Get a list of known databases, each of which has a list of known tables
+        from the database.  This is of the form [{'database': (database),
+        'tables': [{'schema': (schema), 'table': (table 1)}, ...]}]
 
         :param url: url to connect to the database.
         :param dbparams: optional parameters to send to the connection.
@@ -274,8 +277,26 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         if url.startswith('sql://'):
             url = url.split('sql://', 1)[1]
         dbEngine = sqlalchemy.create_engine(url, **dbparams)
-        tables = list(dbEngine.table_names())
-        return tables
+        insp = sqlalchemy.engine.reflection.Inspector.from_engine(dbEngine)
+        schemas = insp.get_schema_names()
+        defaultSchema = insp.default_schema_name
+
+        tables = [{'name': table, 'table': table}
+                  for table in dbEngine.table_names()]
+        tables.extend([{'name': view, 'table': view}
+                       for view in insp.get_view_names()])
+        databaseName = base.databaseFromUri(url)
+        results = [{'database': databaseName, 'tables': tables}]
+        for schema in schemas:
+            if schema != defaultSchema:
+                tables = [{'name': '%s.%s' % (schema, table),
+                           'table': table, 'schema': schema}
+                          for table in dbEngine.table_names(schema=schema)]
+                tables.extend([{'name': '%s.%s' % (schema, view),
+                                'table': view, 'schema': schema}
+                               for view in insp.get_view_names(schema=schema)])
+                results[0]['tables'].extend(tables)
+        return results
 
     def performSelect(self, fields, queryProps={}, filters=[], client=None):
         """

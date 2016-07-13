@@ -1,4 +1,6 @@
+import bson
 import csv
+import datetime
 import json
 import six
 
@@ -20,11 +22,13 @@ class DatabaseQueryException(GirderException):
 
 # Functions related to querying databases
 
-def convertSelectDataToCSVGenerator(result):
+def convertSelectDataToCSVGenerator(result, dumpFunc=json.dumps):
     """
     Return a function that produces a generator for outputting a CSV file.
 
     :param result: the initial select results.
+    :param dumpFunc: fallback function for dumping objects and unknown data
+                     types to JSON.
     :returns: a function that outputs a generator.
     """
     class Echo(object):
@@ -32,10 +36,21 @@ def convertSelectDataToCSVGenerator(result):
             return value
 
     writer = csv.writer(Echo())
+    # values that are of a type in allowedTypes and not in disallowedTypes
+    # should be converted by the CSV writer.  All others are converted to JSON
+    # first.  The integer_types include True and False
+    allowedTypes = six.string_types + six.integer_types + (
+        float, type(None), datetime.datetime)
+    disallowedTypes = (bson.binary.Binary, )
 
     def resultFunc():
         yield writer.writerow(result['fields'])
         for row in result['data']:
+            row = [value if isinstance(value, allowedTypes) and
+                   not isinstance(value, disallowedTypes) else
+                   dumpFunc(value, check_circular=False, separators=(',', ':'),
+                            sort_keys=False, default=str) for value in row]
+
             yield writer.writerow(row)
 
     return resultFunc
@@ -241,16 +256,17 @@ def queryDatabase(id, dbinfo, params):
     if format == 'dict':
         result = convertSelectDataToDict(result)
 
+    pretty = params.get('pretty') == 'true'
+    dumpFunc = getattr(conn, 'jsonDumps', json.dumps)
     if format == 'csv':
-        resultFunc = convertSelectDataToCSVGenerator(result)
+        resultFunc = convertSelectDataToCSVGenerator(result, dumpFunc)
     else:
         # We could let Girder convert the results into JSON, but it is
         # marginally faster to dump the JSON ourselves, since we can exclude
         # sorting and reduce whitespace.
-        pretty = params.get('pretty') == 'true'
 
         def resultFunc():
-            yield json.dumps(
+            yield dumpFunc(
                 result, check_circular=False, separators=(',', ':'),
                 sort_keys=pretty, default=str, indent=2 if pretty else None)
 
