@@ -793,6 +793,7 @@ class FileTest(base.TestCase):
         slow.join()
         self.assertTrue(
             'canceling statement due to user' in slowResults['exc'].message or
+            'Internal server error' in slowResults['exc'].message or
             'InterruptedException' in slowResults['exc'].message)
 
     def testFileDatabaseSelectPolling(self):

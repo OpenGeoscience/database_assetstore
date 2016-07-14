@@ -1,15 +1,9 @@
 $(function () {
     girderTest.addCoveredScripts([
-    /*
-        '/static/built/plugins/database_assetstore/templates.js',
-        '/plugins/database_assetstore/web_client/js/imageViewerSelectWidget.js',
-        '/plugins/database_assetstore/web_client/js/imageViewerWidget/base.js',
-        '/plugins/database_assetstore/web_client/js/imageViewerWidget/geojs.js',
-        '/plugins/database_assetstore/web_client/js/imageViewerWidget/leaflet.js',
-        '/plugins/database_assetstore/web_client/js/imageViewerWidget/openlayers.js',
-        '/plugins/database_assetstore/web_client/js/imageViewerWidget/openseadragon.js',
-        '/plugins/database_assetstore/web_client/js/imageViewerWidget/slideatlas.js'
-    */
+        '/plugins/database_assetstore/web_client/js/AssetstoreModel.js',
+        '/plugins/database_assetstore/web_client/js/AssetstoresPage.js',
+        '/plugins/database_assetstore/web_client/js/ImportView.js',
+        '/static/built/plugins/database_assetstore/templates.js'
     ]);
 
     girderTest.importStylesheet(

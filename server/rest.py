@@ -315,6 +315,8 @@ class DatabaseAssetstoreResource(Resource):
                paramType='path')
         .param('parentId', 'The ID of the parent folder, collection, or user '
                'in the Girder data hierarchy under which to import the files.')
+        .param('parentType', 'The type of the parent object to import into.',
+               enum=('folder', 'user', 'collection'), required=False)
         .param('table', 'The name of a single table, or a JSON list.  Each '
                'entry of the list is either a table name, an object with '
                '\'database\' and \'name\' keys, or an object with at least a '
@@ -347,7 +349,7 @@ class DatabaseAssetstoreResource(Resource):
             raise RestException('Invalid parentType.')
         parent = self.model(parentType).load(params['parentId'], force=True,
                                              exc=True)
-        tables = params.get('table')
+        tables = params.get('table', '')
         if '[' in tables:
             try:
                 tables = json.loads(tables)
@@ -365,7 +367,7 @@ class DatabaseAssetstoreResource(Resource):
                     raise ValueError()
             except ValueError:
                 raise RestException('The limit must be a positive integer.')
-        if '' in tables or None in tables:
+        if '' in tables:
             tables = ['']
         tables = self._parseTableList(tables, assetstore)
         if not len(tables):

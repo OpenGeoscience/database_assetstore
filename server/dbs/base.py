@@ -71,6 +71,7 @@ DatatypeOperators = {
 
 _connectorClasses = {}
 _connectorCache = {}
+_connectorCacheMaxSize = 10  # Probably should make this configurable
 
 
 def getDBConnectorClass(name):
@@ -132,7 +133,7 @@ def clearDBConnectorCache(id):
     """
     id = str(id)
     if id in _connectorCache:
-        del _connectorCache[id]
+        _connectorCache.pop(id, None)
         return True
     return False
 
@@ -147,7 +148,8 @@ def getDBConnector(id, dbinfo):
     """
     if id is not None:
         id = str(id)
-    if id not in _connectorCache:
+    conn = _connectorCache.get(id, None)
+    if conn is None:
         connClass = getDBConnectorClass(dbinfo.get('type'))
         if connClass is None:
             return None
@@ -155,9 +157,9 @@ def getDBConnector(id, dbinfo):
         if not getattr(conn, 'initialized', None):
             return None
         if id is not None:
+            if len(_connectorCache) > _connectorCacheMaxSize:
+                _connectorCache.clear()
             _connectorCache[id] = conn
-    else:
-        conn = _connectorCache[id]
     return conn
 
 

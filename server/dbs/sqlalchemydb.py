@@ -17,6 +17,7 @@
 #  limitations under the License.
 ##############################################################################
 
+import six
 import sqlalchemy
 import sqlalchemy.engine.reflection
 import sqlalchemy.orm
@@ -38,6 +39,25 @@ DatabaseOperators = {
     'lte': '<=',
     'lt': '<',
 }
+
+
+_enginePool = {}
+_enginePoolMaxSize = 5
+
+
+def getEngine(url, **kwargs):
+    """
+    Get a sqlalchem engine from a pool in case we use the same parameters for
+    multiple connections.
+    """
+    key = (url, frozenset(six.viewitems(kwargs)))
+    engine = _enginePool.get(key)
+    if engine is None:
+        engine = sqlalchemy.create_engine(url, **kwargs)
+        if len(_enginePool) >= _enginePoolMaxSize:
+            _enginePoolMaxSize.clear()
+        _enginePool[key] = engine
+    return engine
 
 
 class SQLAlchemyConnector(base.DatabaseConnector):
@@ -167,8 +187,7 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         :return: a SQLAlchemny session object.
         """
         if not self.dbEngine:
-            self.dbEngine = sqlalchemy.create_engine(
-                self.databaseUrl, **self.dbparams)
+            self.dbEngine = getEngine(self.databaseUrl, **self.dbparams)
             metadata = sqlalchemy.MetaData(self.dbEngine)
             table = sqlalchemy.Table(self.table, metadata, schema=self.schema,
                                      autoload=True)

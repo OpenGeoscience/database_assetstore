@@ -350,9 +350,11 @@ def getDbInfoForFile(file, assetstore=None):
         'url': assetstore['database']['uri'],
         'table': file[dbInfoKey]['table'],
         'collection': file[dbInfoKey]['table']
+
     }
-    if 'database' in file[dbInfoKey]:
-        dbinfo['database'] = file[dbInfoKey]['database']
+    for key in ('database', 'schema'):
+        if key in file[dbInfoKey]:
+            dbinfo[key] = file[dbInfoKey][key]
     return dbinfo
 
 
