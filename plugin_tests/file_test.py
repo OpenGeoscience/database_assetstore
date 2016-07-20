@@ -19,7 +19,6 @@
 
 import json
 import os
-import random
 import threading
 import time
 
@@ -756,16 +755,20 @@ class FileTest(base.TestCase):
             fileId, ), user=self.user, params=params)
         self.assertStatusOk(resp)
         self.assertNotEqual(sessions['test']['session'], last['session'])
-        # Send a slow query in a thread.  Use a random number as part of the
-        # query to prevent caching of the results.
+        # Send a slow query in a thread.  Use pg_sleep, as it produces more
+        # consistent tests.  Before, we were using
+        #   {'func': 'st_hausdorffdistance', 'param': [
+        #       {'func': 'st_minimumboundingcircle', 'param': {
+        #           'field': 'geom'}},
+        #       {'field': 'geom'},
+        #       0.03 + 0.01 * random.random()]},
+        # whiched used a random number as part of the query to prevent
+        # caching of the results.  This would occasionally fully process
+        # instead of getting canceled.
         slowParams = params.copy()
         slowParams['fields'] = json.dumps([
             'town',
-            {'func': 'st_hausdorffdistance', 'param': [
-                {'func': 'st_minimumboundingcircle', 'param': {
-                    'field': 'geom'}},
-                {'field': 'geom'},
-                0.03 + 0.01 * random.random()]},
+            {'func': 'pg_sleep', 'param': [40]},
         ])
         slowParams['limit'] = 500
         slowResults = {}

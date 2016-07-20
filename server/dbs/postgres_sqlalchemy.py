@@ -84,6 +84,10 @@ class PostgresSAConnector(SQLAlchemyConnector):
                 if (func[1] not in ('i', 's') and
                         self._allowedFunctions.get(func[0], False)):
                     self._allowedFunctions[func[0]] = False
+            # Whitelist some functions if they exist
+            for func in funcs:
+                if func[0] in ('pg_sleep', ):
+                    self._allowedFunctions[func[0]] = True
         return self._allowedFunctions.get(funcname.lower(), False)
 
     def getFieldInfo(self):

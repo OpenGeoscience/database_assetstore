@@ -1,6 +1,7 @@
 import bson
 import csv
 import datetime
+import decimal
 import json
 import six
 
@@ -38,9 +39,10 @@ def convertSelectDataToCSVGenerator(result, dumpFunc=json.dumps):
     writer = csv.writer(Echo())
     # values that are of a type in allowedTypes and not in disallowedTypes
     # should be converted by the CSV writer.  All others are converted to JSON
-    # first.  The integer_types include True and False
+    # first.  The integer_types include True and False.  We may need to add
+    # more type from sqlalchemy.sql.sqltypes.
     allowedTypes = six.string_types + six.integer_types + (
-        float, type(None), datetime.datetime)
+        float, type(None), datetime.datetime, decimal.Decimal)
     disallowedTypes = (bson.binary.Binary, )
 
     def resultFunc():
