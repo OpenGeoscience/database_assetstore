@@ -389,9 +389,7 @@ def databaseFromUri(uri):
     :param uri: the database connection uri.
     :returns: the name of the database or None.
     """
-    parts = uri.split('/')
-    if '://' not in uri:
-        parts = ['', ''] + parts
-    if len(parts) < 4 or not parts[3]:
+    parts = uri.split('://', 1)[-1].split('/')
+    if len(parts) < 2 or not parts[1]:
         return None
-    return parts[3]
+    return parts[1]

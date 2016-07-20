@@ -305,6 +305,14 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
                 raise GirderException(
                     'A file for table %s is present but cannot be updated '
                     'because it wasn\'t imported.' % name)
+            # Validate the limit parameter
+            try:
+                if (params.get('limit') not in (None, '') and
+                        int(params.get('limit')) <= 0):
+                    raise ValueError()
+            except ValueError:
+                raise GirderException(
+                    'limit must be empty or a positive integer')
             # Set or replace the database parameters for the file
             dbinfo['imported'] = True
             for key in ('sort', 'fields', 'filters', 'format', 'limit'):
@@ -316,13 +324,6 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
                 file.copy(), headers=False, extraParameters='limit=1')
             # Test the download without keeping it
             [None for chunk in downloadFunc()]
-            try:
-                if (params.get('limit') not in (None, '') and
-                        int(params.get('limit')) <= 0):
-                    raise ValueError()
-            except ValueError:
-                raise GirderException(
-                    'limit must be empty or a positive integer')
             # Now save the new file
             fileModel.save(file)
 

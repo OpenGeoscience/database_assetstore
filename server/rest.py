@@ -111,7 +111,11 @@ class DatabaseFileResource(File):
         dbinfo = assetstore.getDbInfoForFile(file)
         if not dbinfo:
             raise RestException('File is not a database link.')
-        conn = dbs.getDBConnector(file['_id'], dbinfo)
+        try:
+            conn = dbs.getDBConnector(file['_id'], dbinfo)
+        except Exception as exc:
+            raise RestException('Failed to connect to database (%r).' %
+                                exc.message)
         if not conn:
             raise RestException('Failed to connect to database.')
         fields = conn.getFieldInfo()

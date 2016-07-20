@@ -22,6 +22,8 @@ import os
 
 from girder import config
 from girder.constants import AssetstoreType
+from girder.models.model_base import GirderException
+from girder.utility import assetstore_utilities, progress
 from tests import base
 
 # boiler plate to start and stop the server
@@ -205,9 +207,98 @@ class AssetstoreTest(base.TestCase):
             method='PUT', user=self.admin, params=params)
         self.assertStatus(resp, 400)
         self.assertIn('JSON list', resp.json['message'])
+        params['table'] = json.dumps({'not a list': []})
+        resp = self.request(
+            path='/database_assetstore/%s/import' % str(assetstore1['_id']),
+            method='PUT', user=self.admin, params=params)
+        self.assertStatus(resp, 400)
+        self.assertIn('JSON list', resp.json['message'])
+        params['table'] = json.dumps([])
+        resp = self.request(
+            path='/database_assetstore/%s/import' % str(assetstore1['_id']),
+            method='PUT', user=self.admin, params=params)
+        self.assertStatus(resp, 400)
+        self.assertIn('must have at least one value', resp.json['message'])
+        params['table'] = json.dumps([''])
+        params['format'] = 'not a format'
+        resp = self.request(
+            path='/database_assetstore/%s/import' % str(assetstore1['_id']),
+            method='PUT', user=self.admin, params=params)
+        self.assertStatus(resp, 400)
+        self.assertIn('Format must be one of', resp.json['message'])
+        del params['format']
+
+        # Import some tables from postgres
         params['table'] = json.dumps([
             'towns', {'table': 'edges', 'schema': 'tiger'}])
         resp = self.request(
             path='/database_assetstore/%s/import' % str(assetstore1['_id']),
             method='PUT', user=self.admin, params=params)
         self.assertStatusOk(resp)
+        # Doing it again should be fine
+        resp = self.request(
+            path='/database_assetstore/%s/import' % str(assetstore1['_id']),
+            method='PUT', user=self.admin, params=params)
+        self.assertStatusOk(resp)
+        # Asking for just one table we already have should also be fine.
+        params['table'] = 'towns'
+        resp = self.request(
+            path='/database_assetstore/%s/import' % str(assetstore1['_id']),
+            method='PUT', user=self.admin, params=params)
+        self.assertStatusOk(resp)
+        # Setting a bad limit should throw an error
+        params['limit'] = -4
+        resp = self.request(
+            path='/database_assetstore/%s/import' % str(assetstore1['_id']),
+            method='PUT', user=self.admin, params=params)
+        self.assertStatus(resp, 400)
+        self.assertIn('positive integer', resp.json['message'])
+        del params['limit']
+
+        # Import a table from mongo
+        params['table'] = json.dumps([{
+            'table': 'user',
+            'database': os.environ.get('GIRDER_TEST_DB').split('/')[-1]
+        }])
+        resp = self.request(
+            path='/database_assetstore/%s/import' % str(assetstore2['_id']),
+            method='PUT', user=self.admin, params=params)
+        self.assertStatusOk(resp)
+        # Doing it again should be fine
+        resp = self.request(
+            path='/database_assetstore/%s/import' % str(assetstore2['_id']),
+            method='PUT', user=self.admin, params=params)
+        self.assertStatusOk(resp)
+        # Import a database from mongo
+        params['table'] = json.dumps([{
+            'database': os.environ.get('GIRDER_TEST_DB').split('/')[-1]
+        }])
+        resp = self.request(
+            path='/database_assetstore/%s/import' % str(assetstore2['_id']),
+            method='PUT', user=self.admin, params=params)
+        self.assertStatusOk(resp)
+        # Doing it again should be fine
+        resp = self.request(
+            path='/database_assetstore/%s/import' % str(assetstore2['_id']),
+            method='PUT', user=self.admin, params=params)
+        self.assertStatusOk(resp)
+
+        # Test some direct calls to the importData method to tests some
+        # additional error conditions
+        adapter = assetstore_utilities.getAssetstoreAdapter(assetstore1)
+        with self.assertRaises(GirderException):
+            adapter.importData(
+                self.publicFolder, 'folder',
+                {'tables': ['towns'], 'limit': -4},
+                progress.noProgress, self.admin)
+        # Change the file we made for towns to remove the marker that it was
+        # imported to prvent import from updating it.
+        townItem = list(self.model('item').textSearch('towns', user=self.admin,
+                                                      limit=1))[0]
+        townFile = list(self.model('item').childFiles(item=townItem))[0]
+        del townFile['databaseMetadata']['imported']
+        self.model('file').save(townFile)
+        with self.assertRaises(GirderException):
+            adapter.importData(
+                self.publicFolder, 'folder', {'tables': ['towns']},
+                progress.noProgress, self.admin)

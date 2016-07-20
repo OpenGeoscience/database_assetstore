@@ -203,7 +203,7 @@ class FileTest(base.TestCase):
             fileId3, ), user=self.admin)
         self.assertStatus(resp, 400)
         self.assertIn('not a database link', resp.json['message'])
-        resp = self.request(path='/file/notanfile/database/fields',
+        resp = self.request(path='/file/notafile/database/fields',
                             user=self.admin)
         self.assertStatus(resp, 400)
         self.assertIn('Invalid ObjectId', resp.json['message'])
@@ -238,7 +238,7 @@ class FileTest(base.TestCase):
         self.assertStatus(resp, 400)
         self.assertIn('not a database link', resp.json['message'])
         resp = self.request(
-            method='PUT', path='/file/notanfile/database/refresh',
+            method='PUT', path='/file/notafile/database/refresh',
             user=self.admin)
         self.assertStatus(resp, 400)
         self.assertIn('Invalid ObjectId', resp.json['message'])
@@ -287,7 +287,7 @@ class FileTest(base.TestCase):
             fileId3, ), user=self.admin)
         self.assertStatus(resp, 400)
         self.assertIn('not a database link', resp.json['message'])
-        resp = self.request(path='/file/notanfile/database/select',
+        resp = self.request(path='/file/notafile/database/select',
                             user=self.admin)
         self.assertStatus(resp, 400)
         self.assertIn('Invalid ObjectId', resp.json['message'])
