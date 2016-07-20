@@ -81,7 +81,7 @@ class SQLAlchemyConnector(base.DatabaseConnector):
 
         # Additional parameters:
         #  idletime: seconds after which a connection is considered idle
-        #  abandontime: second after which a connection will be abandoned
+        #  abandontime: seconds after which a connection will be abandoned
         self.dbIdleTime = float(kwargs.get('idletime', 300))
         self.dbAbandonTime = float(kwargs.get('abandontime',
                                    self.dbIdleTime * 5))
@@ -215,6 +215,9 @@ class SQLAlchemyConnector(base.DatabaseConnector):
                 if ((idle > self.dbIdleTime and
                         not self.sessions[oldsess]['used']) or
                         idle > self.dbAbandonTime):
+                    # Close the session.  sqlalchemy keeps them too long
+                    # otherwise
+                    self.sessions[oldsess]['session'].close()
                     del self.sessions[oldsess]
         # Cancel an existing query
         if client in self.sessions and self.sessions[client]['used']:
@@ -252,6 +255,9 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         """
         if client in self.sessions:
             self.sessions[client]['used'] = False
+        else:
+            # Close the session.  sqlalchemy keeps them too long otherwise
+            db.close()
 
     def getFieldInfo(self):
         """
