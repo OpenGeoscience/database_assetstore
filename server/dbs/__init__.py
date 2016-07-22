@@ -17,10 +17,10 @@
 #  limitations under the License.
 ##############################################################################
 
-from base import (   # noqa
+from .base import (   # noqa
     getDBConnectorClass, getDBConnector, getDBConnectorClassFromDialect,
     clearDBConnectorCache, FilterOperators, DatabaseConnectorException,
     databaseFromUri)
-import sqlalchemydb  # noqa
-import postgres_sqlalchemy  # noqa
-import mongo  # noqa
+from . import sqlalchemydb  # noqa
+from . import postgres_sqlalchemy  # noqa
+from . import mongo  # noqa

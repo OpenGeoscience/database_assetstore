@@ -40,6 +40,19 @@ def tearDownModule():
     base.stopServer()
 
 
+def mergeDicts(*args):
+    """
+    Merge dictionaries.
+
+    :params *args: any number of dictionaries.
+    :returns: a merged dictionary
+    """
+    result = {}
+    for item in args:
+        result.update(item)
+    return result
+
+
 class FileTest(base.TestCase):
     dbParams = {
         'name': 'Assetstore 1',
@@ -530,50 +543,50 @@ class FileTest(base.TestCase):
         # of each field optionally suffixed with different operators.
         baseParams = {'limit': 5, 'sort': 'town', 'fields': 'town'}
         # Exact match
-        params = dict(baseParams.items() + {'town': 'BOSTON'}.items())
+        params = mergeDicts(baseParams, {'town': 'BOSTON'})
         resp = self.request(path='/file/%s/database/select' % (
             fileId, ), user=self.user, params=params)
         self.assertStatusOk(resp)
         self.assertEqual(len(resp.json['data']), 1)
         self.assertEqual(resp.json['data'][0][0], 'BOSTON')
-        params = dict(baseParams.items() + {'town': 'boston'}.items())
+        params = mergeDicts(baseParams, {'town': 'boston'})
         resp = self.request(path='/file/%s/database/select' % (
             fileId, ), user=self.user, params=params)
         self.assertStatusOk(resp)
         self.assertEqual(len(resp.json['data']), 0)
         # minimum
-        params = dict(baseParams.items() + {'town_min': 'BOS'}.items())
+        params = mergeDicts(baseParams, {'town_min': 'BOS'})
         resp = self.request(path='/file/%s/database/select' % (
             fileId, ), user=self.user, params=params)
         self.assertStatusOk(resp)
         self.assertEqual(len(resp.json['data']), 5)
         self.assertEqual(resp.json['data'][0][0], 'BOSTON')
         # search
-        params = dict(baseParams.items() + {'town_search': '^bo.*n$'}.items())
+        params = mergeDicts(baseParams, {'town_search': '^bo.*n$'})
         resp = self.request(path='/file/%s/database/select' % (
             fileId, ), user=self.user, params=params)
         self.assertStatusOk(resp)
         self.assertEqual(len(resp.json['data']), 3)
         self.assertEqual(resp.json['data'][1][0], 'BOSTON')
         # compound
-        params = dict(baseParams.items() + {
+        params = mergeDicts(baseParams, {
             'town_min': 'BOS',
             'town_notsearch': '^bo.*n$'
-        }.items())
+        })
         resp = self.request(path='/file/%s/database/select' % (
             fileId, ), user=self.user, params=params)
         self.assertStatusOk(resp)
         self.assertEqual(len(resp.json['data']), 5)
         self.assertNotEqual(resp.json['data'][0][0], 'BOSTON')
         # numeric comparisons are sent as text
-        params = dict(baseParams.items() + {'pop2010_min': '150000'}.items())
+        params = mergeDicts(baseParams, {'pop2010_min': '150000'})
         resp = self.request(path='/file/%s/database/select' % (
             fileId, ), user=self.user, params=params)
         self.assertStatusOk(resp)
         self.assertEqual(len(resp.json['data']), 3)
         self.assertEqual(resp.json['data'][0][0], 'BOSTON')
         # you can't use regex or search on numeric types
-        params = dict(baseParams.items() + {'pop2010_search': '150000'}.items())
+        params = mergeDicts(baseParams, {'pop2010_search': '150000'})
         resp = self.request(path='/file/%s/database/select' % (
             fileId, ), user=self.user, params=params)
         self.assertStatus(resp, 400)
@@ -581,19 +594,19 @@ class FileTest(base.TestCase):
                       resp.json['message'])
         # We should be able to get the same results regardless of whether we
         # use not or not_
-        params = dict(baseParams.items() + {
+        params = mergeDicts(baseParams, {
             'town_min': 'BOS',
             'town_notin': 'BOSTON'
-        }.items())
+        })
         resp = self.request(path='/file/%s/database/select' % (
             fileId, ), user=self.user, params=params)
         self.assertStatusOk(resp)
         self.assertEqual(len(resp.json['data']), 5)
         self.assertEqual(resp.json['data'][0][0], 'BOURNE')
-        params = dict(baseParams.items() + {
+        params = mergeDicts(baseParams, {
             'town_min': 'BOS',
             'town_not_in': 'BOSTON'
-        }.items())
+        })
         resp = self.request(path='/file/%s/database/select' % (
             fileId, ), user=self.user, params=params)
         self.assertStatusOk(resp)
@@ -797,7 +810,7 @@ class FileTest(base.TestCase):
                 self.request(path='/file/%s/database/select' % (
                     fileId, ), user=self.user, params=slowParams)
             except Exception as exc:
-                slowResults['exc'] = exc
+                slowResults['exc'] = repr(exc)
 
         slow = threading.Thread(target=slowQuery, kwargs={
             'params': params
@@ -814,9 +827,9 @@ class FileTest(base.TestCase):
         # The slow request should be cancelled
         slow.join()
         self.assertTrue(
-            'canceling statement due to user' in slowResults['exc'].message or
-            'Internal server error' in slowResults['exc'].message or
-            'InterruptedException' in slowResults['exc'].message)
+            'canceling statement due to user' in slowResults['exc'] or
+            'Internal server error' in slowResults['exc'] or
+            'InterruptedException' in slowResults['exc'])
 
     def testFileDatabaseSelectPolling(self):
         # Create a test database connector so we can check polling

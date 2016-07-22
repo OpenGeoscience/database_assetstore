@@ -7,7 +7,7 @@ import six
 
 from girder.models.model_base import GirderException
 
-from dbs import getDBConnector, FilterOperators, DatabaseConnectorException
+from .dbs import getDBConnector, FilterOperators, DatabaseConnectorException
 
 
 dbFormatList = {

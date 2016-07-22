@@ -18,6 +18,7 @@
 ##############################################################################
 
 import bson.json_util
+import six
 from pymongo import MongoClient
 
 from . import base
@@ -90,7 +91,7 @@ class MongoConnector(base.DatabaseConnector):
             filterQueryClauses = self._applyFilter(filterQueryClauses, filt)
 
         opts = {}
-        for k, v in queryProps.iteritems():
+        for k, v in six.iteritems(queryProps):
             target = None
             if k == 'fields':
                 target = 'projection'

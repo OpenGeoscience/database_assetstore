@@ -221,7 +221,7 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         # If we are asking for a specific client, clean up defunct clients
         curtime = time.time()
         if client:
-            for oldsess in self.sessions.keys():
+            for oldsess in list(self.sessions):
                 idle = curtime - self.sessions[oldsess]['last']
                 if ((idle > self.dbIdleTime and
                         not self.sessions[oldsess]['used']) or

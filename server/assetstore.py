@@ -131,6 +131,8 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
         skipped = 0
         output = six.BytesIO()
         for chunk in resultFunc():
+            if not isinstance(chunk, six.binary_type):
+                chunk = chunk.encode('utf8')
             totallen += len(chunk)
             if skipped < offset:
                 if skipped + len(chunk) <= offset:
