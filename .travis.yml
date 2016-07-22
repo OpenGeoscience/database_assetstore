@@ -64,12 +64,11 @@ before_script:
 
 script:
     - mkdir -p $build_path/girder_testing_build
-    - cd $build_path/girder_testing_build
-    - cmake -DPYTHON_COVERAGE:BOOL=${PY_COVG} -DPYTHON_VERSION:STRING=${TRAVIS_PYTHON_VERSION} -DCOVERAGE_MINIMUM_PASS=30 $girder_path
+    - cmake -DPYTHON_COVERAGE:BOOL=${PY_COVG} -DPYTHON_VERSION:STRING=${TRAVIS_PYTHON_VERSION} -DCOVERAGE_MINIMUM_PASS=40 -DJS_COVERAGE_MINIMUM_PASS=9 $girder_path
     - make
     - gunzip -c data/plugins/database_assetstore/testdb.sql.gz | psql -U postgres sampledb
     # Show that we loaded the database properly
     - psql -U postgres -h 127.0.0.1 sampledb -c "SELECT table_type,table_name FROM information_schema.tables WHERE table_schema='public' order by table_name;" | cat
     # Only some functions are available in the version that Travis has.
     # - psql -U postgres -h 127.0.0.1 sampledb -c "SELECT lower(proname), provolatile FROM pg_proc order by lower(proname);" | cat
-    - JASMINE_TIMEOUT=15000 ctest -VV -R '(coverage_reset|py_coverage_combine|database_assetstore|py_coverage$|py_coverage_xml)'
+    - JASMINE_TIMEOUT=15000 ctest -VV -R '(coverage_reset|coverage_combine|database_assetstore|coverage$|coverage_xml)'

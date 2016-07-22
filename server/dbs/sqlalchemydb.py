@@ -45,6 +45,22 @@ _enginePool = {}
 _enginePoolMaxSize = 5
 
 
+def adjustDBUrl(url):
+    """
+    Adjust a url to match the form sqlalchemy requires.  In general, the url is
+    of the form dialect+driver://username:password@host:port/database.
+
+    :param url: the url to adjust.
+    :returns: the adjusted url
+    """
+    # The below code is disabled until a test can be made where it works.
+    # sqlalchemy doesn't seem to permit this without some additional module
+    # If the prefix is sql://, use the default generic-sql dialect
+    # if url.startswith('sql://'):
+    #     url = url.split('sql://', 1)[1]
+    return url
+
+
 def getEngine(url, **kwargs):
     """
     Get a sqlalchem engine from a pool in case we use the same parameters for
@@ -65,8 +81,6 @@ class SQLAlchemyConnector(base.DatabaseConnector):
 
     def __init__(self, *args, **kwargs):
         super(SQLAlchemyConnector, self).__init__(*args, **kwargs)
-        if not self.validate(**kwargs):
-            return
         self.table = kwargs.get('table')
         self.schema = kwargs.get('schema')
         self.dbEngine = None
@@ -74,10 +88,7 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         # dbparams can include values in http://www.postgresql.org/docs/
         #   current/static/libpq-connect.html#LIBPQ-PARAMKEYWORDS
         self.dbparams = kwargs.get('dbparams', {})
-        self.databaseUrl = kwargs.get('url')
-        # If the prefix is sql://, use the default generic-sql dialect
-        if self.databaseUrl.startswith('sql://'):
-            self.databaseUrl = self.databaseUrl.split('sql://', 1)[1]
+        self.databaseUrl = adjustDBUrl(kwargs.get('url'))
 
         # Additional parameters:
         #  idletime: seconds after which a connection is considered idle
@@ -298,10 +309,7 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         :param dbparams: optional parameters to send to the connection.
         :returns: A list of known tables.
         """
-        # If the prefix is sql://, use the default generic-sql dialect
-        if url.startswith('sql://'):
-            url = url.split('sql://', 1)[1]
-        dbEngine = sqlalchemy.create_engine(url, **dbparams)
+        dbEngine = sqlalchemy.create_engine(adjustDBUrl(url), **dbparams)
         insp = sqlalchemy.engine.reflection.Inspector.from_engine(dbEngine)
         schemas = insp.get_schema_names()
         defaultSchema = insp.default_schema_name

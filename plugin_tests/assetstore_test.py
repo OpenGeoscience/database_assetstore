@@ -19,9 +19,11 @@
 
 import json
 import os
+import six
+from six.moves import urllib
 
 from girder import config
-from girder.constants import AssetstoreType
+from girder.constants import AssetstoreType, SettingKey
 from girder.models.model_base import GirderException
 from girder.utility import assetstore_utilities, progress
 from tests import base
@@ -77,7 +79,7 @@ class AssetstoreTest(base.TestCase):
             'name': 'Test Assetstore',
             'dbtype': 'sqlalchemy_postgres',
             'dburi': os.environ.get(
-                'GIRDER_DB_ITEM_DB',
+                'GIRDER_DATABASE_ASSETSTORE_POSTGRES_DB',
                 'postgresql://postgres@127.0.0.1/sampledb'),
         }
         self.dbParams2 = {
@@ -302,3 +304,240 @@ class AssetstoreTest(base.TestCase):
             adapter.importData(
                 self.publicFolder, 'folder', {'tables': ['towns']},
                 progress.noProgress, self.admin)
+
+    def testAssetstoreReadOnly(self):
+        # Create assetstore
+        resp = self.request(path='/assetstore', method='POST', user=self.admin,
+                            params=self.dbParams)
+        self.assertStatusOk(resp)
+        assetstore1 = resp.json
+        # Import some tables from postgres
+        params = {
+            'parentId': str(self.publicFolder['_id']),
+            'parentType': 'folder',
+            'table': json.dumps([
+                'towns', {'table': 'edges', 'schema': 'tiger'}]),
+        }
+        resp = self.request(
+            path='/database_assetstore/%s/import' % str(assetstore1['_id']),
+            method='PUT', user=self.admin, params=params)
+        self.assertStatusOk(resp)
+        # Mark the towns database as not imported
+        townItem = list(self.model('item').textSearch('towns', user=self.admin,
+                                                      limit=1))[0]
+        townFile = list(self.model('item').childFiles(item=townItem))[0]
+        del townFile['databaseMetadata']['imported']
+        self.model('file').save(townFile)
+        # We shouldn't be allowed to delete towns
+        with six.assertRaisesRegex(self, Exception,
+                                   'Database assetstores are read only'):
+            resp = self.request(path='/item/%s' % str(townItem['_id']),
+                                method='DELETE', user=self.admin)
+        # If we remark it as imported, we can
+        townFile['databaseMetadata']['imported'] = True
+        self.model('file').save(townFile)
+        resp = self.request(path='/item/%s' % str(townItem['_id']),
+                            method='DELETE', user=self.admin)
+        self.assertStatusOk(resp)
+        # We can't upload
+        adapter = assetstore_utilities.getAssetstoreAdapter(assetstore1)
+        with six.assertRaisesRegex(self, Exception,
+                                   'Database assetstores are read only'):
+            adapter.initUpload({})
+        with six.assertRaisesRegex(self, Exception,
+                                   'Database assetstores are read only'):
+            adapter.finalizeUpload({}, {})
+
+    def testAssetstoreDownload(self):
+        # Create assetstore
+        resp = self.request(path='/assetstore', method='POST', user=self.admin,
+                            params=self.dbParams)
+        self.assertStatusOk(resp)
+        assetstore1 = resp.json
+        # Import some tables from postgres
+        params = {
+            'parentId': str(self.publicFolder['_id']),
+            'parentType': 'folder',
+            'table': 'towns',
+            'format': 'list',
+            'fields': 'town,pop2010',
+            'limit': '10'
+        }
+        resp = self.request(
+            path='/database_assetstore/%s/import' % str(assetstore1['_id']),
+            method='PUT', user=self.admin, params=params)
+        self.assertStatusOk(resp)
+        townItem = list(self.model('item').textSearch('towns', user=self.admin,
+                                                      limit=1))[0]
+        resp = self.request(path='/item/%s/download' % str(townItem['_id']))
+        self.assertStatusOk(resp)
+        data = resp.json
+        self.assertEqual(data['datacount'], 10)
+        self.assertEqual(data['fields'], ['town', 'pop2010'])
+        # Test extraParameters for format
+        params = {
+            'extraParameters': urllib.parse.urlencode({
+                'format': 'csv',
+                'limit': 5
+            }),
+            'contentDisposition': 'inline'
+        }
+        resp = self.request(
+            path='/item/%s/download' % str(townItem['_id']), params=params,
+            isJson=False)
+        self.assertStatusOk(resp)
+        data = self.getBody(resp)
+        self.assertEqual(len(data.split('\r\n')), 7)
+        self.assertEqual(data.split('\r\n', 1)[0], 'town,pop2010')
+        # Test range requests
+        resp = self.request(
+            path='/item/%s/download' % str(townItem['_id']), params=params,
+            isJson=False, additionalHeaders=[('Range', 'bytes=10-19')])
+        self.assertStatus(resp, 206)
+        self.assertEqual(self.getBody(resp), data[10:20])
+        resp = self.request(
+            path='/item/%s/download' % str(townItem['_id']), params=params,
+            isJson=False, additionalHeaders=[('Range', 'bytes=50-')])
+        self.assertStatus(resp, 206)
+        self.assertEqual(self.getBody(resp), data[50:])
+        resp = self.request(
+            path='/item/%s/download' % str(townItem['_id']), params=params,
+            isJson=False, additionalHeaders=[('Range', 'bytes=5000-')])
+        self.assertStatus(resp, 206)
+        self.assertEqual(self.getBody(resp), '')
+        # Test more complex extraParameters
+        params = {
+            'extraParameters': urllib.parse.urlencode({
+                'format': 'list',
+                'fields': json.dumps(['town', 'pop2000', 'pop2010']),
+                'sort': json.dumps([['pop2000', -1]]),
+                'filters': json.dumps([{
+                    'field': 'pop2000', 'operator': '<', 'value': 100000}]),
+                'limit': 5
+            })
+        }
+        resp = self.request(
+            path='/item/%s/download' % str(townItem['_id']), params=params)
+        self.assertStatusOk(resp)
+        data = resp.json
+        self.assertEqual(data['datacount'], 5)
+        self.assertEqual(data['fields'], ['town', 'pop2000', 'pop2010'])
+        self.assertLess(int(data['data'][0][1]), 100000)
+        self.assertLess(int(data['data'][1][1]), int(data['data'][0][1]))
+        # Test a direct call
+        townFile = list(self.model('item').childFiles(item=townItem))[0]
+        adapter = assetstore_utilities.getAssetstoreAdapter(assetstore1)
+        params = {
+            'format': 'list',
+            'fields': ['town', 'pop2000', 'pop2010'],
+            'sort': [['pop2000', -1]],
+            'filters': [{
+                'field': 'pop2000', 'operator': '<', 'value': 100000}],
+            'limit': 5
+        }
+        func = adapter.downloadFile(townFile, headers=False,
+                                    extraParameters=params)
+        data = json.loads(''.join([part for part in func()]))
+        self.assertEqual(data['datacount'], 5)
+        self.assertEqual(data['fields'], ['town', 'pop2000', 'pop2010'])
+        self.assertLess(int(data['data'][0][1]), 100000)
+        self.assertLess(int(data['data'][1][1]), int(data['data'][0][1]))
+
+    def testAssetstoreFileCopy(self):
+        # Create assetstore
+        resp = self.request(path='/assetstore', method='POST', user=self.admin,
+                            params=self.dbParams)
+        self.assertStatusOk(resp)
+        assetstore1 = resp.json
+        # Import a tables from postgres
+        params = {
+            'parentId': str(self.publicFolder['_id']),
+            'parentType': 'folder',
+            'table': 'towns',
+        }
+        resp = self.request(
+            path='/database_assetstore/%s/import' % str(assetstore1['_id']),
+            method='PUT', user=self.admin, params=params)
+        self.assertStatusOk(resp)
+        townItem = list(self.model('item').textSearch('towns', user=self.admin,
+                                                      limit=1))[0]
+        townFile = list(self.model('item').childFiles(item=townItem))[0]
+        self.assertEqual(self.model('item').childFiles(item=townItem).count(),
+                         1)
+        resp = self.request(path='/file/%s/copy' % str(townFile['_id']),
+                            method='POST', user=self.admin,
+                            params={'itemId': str(townItem['_id'])})
+        self.assertStatusOk(resp)
+        self.assertEqual(self.model('item').childFiles(item=townItem).count(),
+                         2)
+
+    def testEmptyDirectQuery(self):
+        from girder.plugins.database_assetstore import query
+        # Test that queries fail with no connector
+        with six.assertRaisesRegex(self, Exception,
+                                   'Failed to connect'):
+            query.queryDatabase(None, {}, {})
+
+    def testInvalidParameters(self):
+        # Test conditions that should return None
+        from girder.plugins.database_assetstore import assetstore
+        from girder.plugins.database_assetstore.assetstore import dbInfoKey
+        self.assertIsNone(assetstore.getDbInfoForFile({}))
+        self.assertIsNone(assetstore.getDbInfoForFile(
+            {dbInfoKey: {}, 'assetstoreId': 'unknown'}, {'type': 'unknown'}))
+        self.assertEqual(assetstore.getQueryParamsForFile({}), {})
+        self.assertEqual(assetstore.getQueryParamsForFile(
+            {dbInfoKey: {'a': 'b'}}), {})
+        self.assertEqual(assetstore.getQueryParamsForFile(
+            {dbInfoKey: {'sort': 'b'}}), {'sort': 'b'})
+        # Test with non-database assetstore
+        resp = self.request(path='/assetstore', method='GET', user=self.admin)
+        self.assertStatusOk(resp)
+        self.assertEqual(1, len(resp.json))
+        assetstore1 = resp.json[0]
+        self.assertIsNone(assetstore.validateFile(
+            {dbInfoKey: {}, 'assetstoreId': str(assetstore1['_id'])}))
+        # Test database validation
+        resp = self.request(path='/assetstore', method='POST', user=self.admin,
+                            params=self.dbParams2)
+        self.assertStatusOk(resp)
+        assetstore1 = resp.json
+        with six.assertRaisesRegex(self, Exception,
+                                   'must have a non-blank database'):
+            self.assertIsNone(assetstore.validateFile({
+                dbInfoKey: {'table': 'sample'},
+                'assetstoreId': str(assetstore1['_id'])}))
+
+    def testDisablingPluginWithActiveFiles(self):
+        from girder.plugins.database_assetstore import validateSettings
+        plugin_name = 'database_assetstore'
+        # Create assetstores
+        resp = self.request(path='/assetstore', method='POST', user=self.admin,
+                            params=self.dbParams)
+        self.assertStatusOk(resp)
+        assetstore1 = resp.json
+        event = (lambda: None)
+        setattr(event, 'info', {
+            'key': SettingKey.PLUGINS_ENABLED,
+            'value': []})
+        self.assertIsNone(validateSettings(event, plugin_name))
+        self.assertEqual(event.info['value'], [])
+        params = {
+            'parentId': str(self.publicFolder['_id']),
+            'parentType': 'folder',
+            'table': 'towns'
+        }
+        resp = self.request(
+            path='/database_assetstore/%s/import' % str(assetstore1['_id']),
+            method='PUT', user=self.admin, params=params)
+        self.assertStatusOk(resp)
+        self.assertIsNone(validateSettings(event, plugin_name))
+        self.assertEqual(event.info['value'], [plugin_name])
+        townItem = list(self.model('item').textSearch('towns', user=self.admin,
+                                                      limit=1))[0]
+        resp = self.request(path='/item/%s' % str(townItem['_id']),
+                            method='DELETE', user=self.admin)
+        self.assertStatusOk(resp)
+        event.info['value'] = []
+        self.assertIsNone(validateSettings(event, plugin_name))
+        self.assertEqual(event.info['value'], [])

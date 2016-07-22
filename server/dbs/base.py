@@ -172,6 +172,9 @@ class DatabaseConnector(object):
     databaseNameRequired = True
 
     def __init__(self, *args, **kwargs):
+        if not self.validate(**kwargs):
+            raise DatabaseConnectorException(
+                'Failed to validate database connector.')
         self.initialized = False
         self.allowFieldFunctions = False
         self.allowSortFunctions = False

@@ -51,9 +51,8 @@ class PostgresSAConnector(SQLAlchemyConnector):
     name = 'sqlalchemy_postgres'
 
     def __init__(self, *args, **kwargs):
+        # The super class also validates the connector
         super(PostgresSAConnector, self).__init__(*args, **kwargs)
-        if not self.validate(**kwargs):
-            return
         # dbparams can include values in http://www.postgresql.org/docs/
         #   current/static/libpq-connect.html#LIBPQ-PARAMKEYWORDS
         self.databaseOperators = PostgresOperators

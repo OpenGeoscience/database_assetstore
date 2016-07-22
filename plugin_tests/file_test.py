@@ -45,7 +45,7 @@ class FileTest(base.TestCase):
         'name': 'Assetstore 1',
         'type': 'database',  # AssetstoreType.DATABASE
         'dbtype': 'sqlalchemy_postgres',
-        'dburi': os.environ.get('GIRDER_DB_ITEM_DB',
+        'dburi': os.environ.get('GIRDER_DATABASE_ASSETSTORE_POSTGRES_DB',
                                 'postgresql://postgres@127.0.0.1/sampledb'),
     }
 
@@ -67,6 +67,7 @@ class FileTest(base.TestCase):
         dbParams2 = dbParams.copy()
         dbParams2['name'] = 'Assetstore 2'
         dbParams2['dbtype'] = 'sqlalchemy'
+        # dbParams2['dburi'] = 'sql://127.0.0.1/sampledb'
         dbParams2.update(args)
         resp = self.request(method='POST', path='/assetstore', user=self.admin,
                             params=dbParams2)
@@ -184,17 +185,35 @@ class FileTest(base.TestCase):
         from girder.plugins.database_assetstore import dbs
         self.assertIsNone(dbs.getDBConnector('test1', {'type': 'base'}))
         dbs.base.registerConnectorClass('base', dbs.base.DatabaseConnector, {})
-        self.assertIsNone(dbs.getDBConnector('test1', {'type': 'base'}))
+        with self.assertRaises(dbs.DatabaseConnectorException):
+            dbs.getDBConnector('test1', {'type': 'base'})
         del dbs.base._connectorClasses['base']
+
+        class ValidatingConnector(dbs.base.DatabaseConnector):
+            def validate(self, *args, **kwargs):
+                return True
+
+        self.assertIsNone(dbs.getDBConnector('test1', {'type': 'validating'}))
+        dbs.base.registerConnectorClass('validating', ValidatingConnector, {})
+        self.assertIsNone(dbs.getDBConnector('test1', {'type': 'validating'}))
+        del dbs.base._connectorClasses['validating']
 
     def testFileDatabaseBaseConnectorClass(self):
         from girder.plugins.database_assetstore import dbs
-        conn = dbs.base.DatabaseConnector()
+
+        # We have to subclass the base class and allow it to validate, or we
+        # can't create an instance of the class.
+        class ValidatingConnector(dbs.base.DatabaseConnector):
+            def validate(self, *args, **kwargs):
+                return True
+
+        conn = ValidatingConnector()
         res = conn.performSelect()
         self.assertEqual(res['data'], [])
         self.assertEqual(res['fields'], [])
-        self.assertFalse(conn.validate())
+        self.assertFalse(super(ValidatingConnector, conn).validate())
         self.assertTrue(conn.checkOperatorDatatype('unknown', 'unknown'))
+        self.assertEqual(conn.getTableList('ignore'), [])
 
     def testFileDatabaseFields(self):
         fileId, fileId2, fileId3 = self._setupDbFiles()

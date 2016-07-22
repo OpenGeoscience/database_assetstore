@@ -21,8 +21,7 @@ import bson.json_util
 from pymongo import MongoClient
 
 from . import base
-
-from girder.api.rest import RestException
+from .base import DatabaseConnectorException
 
 
 def inferFields(records):
@@ -43,9 +42,6 @@ class MongoConnector(base.DatabaseConnector):
 
     def __init__(self, *args, **kwargs):
         super(MongoConnector, self).__init__(*args, **kwargs)
-        if not self.validate(**kwargs):
-            return
-
         self.collection = kwargs.get('collection', kwargs.get('table'))
         self.databaseUrl = kwargs.get('url')
         self.databaseName = kwargs.get(
@@ -66,7 +62,8 @@ class MongoConnector(base.DatabaseConnector):
 
             clauses.append({field: {operator: value}})
         else:
-            raise RestException('operator %s unimplemented' % (operator))
+            raise DatabaseConnectorException('operator %s unimplemented' % (
+                operator))
 
         return clauses
 

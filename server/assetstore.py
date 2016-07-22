@@ -71,7 +71,7 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
     def initUpload(self, upload):
         raise NotImplementedError('Database assetstores are read only.')
 
-    def finializeUpload(self, upload, file):
+    def finalizeUpload(self, upload, file):
         raise NotImplementedError('Database assetstores are read only.')
 
     def deleteFile(self, file):
@@ -176,16 +176,18 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
         :param contentDisposition: Value for Content-Disposition response
             header disposition-type value.
         :type contentDisposition: str or None
-        :type extraParameters: str or None.  url encoded query string of
-            parameters to add to the query.
+        :type extraParameters: str, dictionary, or None.  url encoded query
+            string or a dictionary of parameters to add to the query.
         :returns: a function that returns a generator for the data.
         """
         dbinfo = getDbInfoForFile(file, self.assetstore)
         params = getQueryParamsForFile(file, True)
         if extraParameters:
-            params.update({key: value for (key, value) in
-                           urllib.parse.parse_qsl(extraParameters,
-                                                  keep_blank_values=True)})
+            if isinstance(extraParameters, six.string_types):
+                extraParameters = {
+                    key: value for (key, value) in urllib.parse.parse_qsl(
+                        extraParameters, keep_blank_values=True)}
+            params.update(extraParameters)
         resultFunc, mimeType = queryDatabase(file.get('_id'), dbinfo, params)
         file['mimeType'] = mimeType
 

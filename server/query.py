@@ -129,7 +129,7 @@ def getFieldsList(conn, fields=None, fieldsValue=None):
     """
     if fieldsValue is None or fieldsValue == '':
         return None
-    if '[' not in fieldsValue and isinstance(fieldsValue, six.string_types):
+    if isinstance(fieldsValue, six.string_types) and '[' not in fieldsValue:
         fieldsList = [field.strip() for field in fieldsValue.split(',')
                       if len(field.strip())]
     else:
@@ -166,7 +166,7 @@ def getSortList(conn, fields=None, sortValue=None, sortDir=None):
     if sortValue is None or sortValue == '':
         return None
     sort = None
-    if '[' not in sortValue and isinstance(sortValue, six.string_types):
+    if isinstance(sortValue, six.string_types) and '[' not in sortValue:
         if conn.isField(sortValue, fields) is not False:
             sort = [(
                 sortValue,
