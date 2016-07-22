@@ -40,14 +40,19 @@ before_install:
     - CACHE=$HOME/.cache CMAKE_VERSION=3.1.0 CMAKE_SHORT_VERSION=3.1 source $girder_path/scripts/install_cmake.sh
     - cmake --version
 
+    - mkdir -p $HOME/.cache/node_modules || true
+    - ln -sf $HOME/.cache/node_modules .
+    - nvm install v2.3.3
     - npm install -g npm
+    - node --version
     - npm --version
+    - npm prune
 
     - pip install -U pip virtualenv
 
 install:
     - cd $girder_path
-    - pip install -U -r requirements.txt -r requirements-dev.txt -r $main_path/requirements.txt -e .
+    - pip install -r requirements-dev.txt -r $main_path/requirements.txt -e .[plugins]
     - npm install
 
 before_script:
