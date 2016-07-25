@@ -14,6 +14,8 @@ dbFormatList = {
     'list': 'application/json',
     'dict': 'application/json',
     'csv': 'text/csv',
+    'json': 'application/json',  # Same as the data component of dict
+    'jsonarray': 'text/plain',
 }
 
 
@@ -23,7 +25,7 @@ class DatabaseQueryException(GirderException):
 
 # Functions related to querying databases
 
-def convertSelectDataToCSVGenerator(result, dumpFunc=json.dumps):
+def convertSelectDataToCsv(result, dumpFunc=json.dumps, *args, **kargs):
     """
     Return a function that produces a generator for outputting a CSV file.
 
@@ -58,7 +60,7 @@ def convertSelectDataToCSVGenerator(result, dumpFunc=json.dumps):
     return resultFunc
 
 
-def convertSelectDataToDict(result):
+def convertSelectDataToDict(result, *args, **kargs):
     """
     Convert data in list format to dictionary format.  The column names are
     used as the keys for each row.
@@ -67,11 +69,45 @@ def convertSelectDataToDict(result):
     :returns: the results with data converted from a list of lists to a list of
               dictionaries.
     """
-    columns = {result['columns'][col]: col for col in result['columns']}
-    result['data'] = [{columns[i]: row[i] for i in range(len(row))}
-                      for row in result['data']]
+    result['data'] = convertSelectDataToJson(result)
     result['format'] = 'dict'
     return result
+
+
+def convertSelectDataToJson(result, *args, **kargs):
+    """
+    Convert data in list format to a simple JSON array format.  The column
+    names are used as the keys for each row.
+
+    :param result: the initial select results.
+    :returns: the results with only the data.  The data is converted from a
+              list of lists to a list of dictionaries.
+    """
+    columns = {result['columns'][col]: col for col in result['columns']}
+    data = [{columns[i]: row[i] for i in range(len(row))}
+            for row in result['data']]
+    return data
+
+
+def convertSelectDataToJsonarray(result, dumpFunc=json.dumps, *args, **kargs):
+    """
+    Convert data in list format to the Mongo JSONArray format.  This has each
+    line be one data item represented as an independent JSON document.  The
+    column names are used as the keys for each row.
+
+    :param result: the initial select results.
+    :param dumpFunc: function for dumping objects to JSON.
+    :returns: a function that outputs a generator.
+    """
+    data = convertSelectDataToJson(result)
+
+    def resultFunc():
+        for row in data:
+            yield dumpFunc(
+                row, check_circular=False, separators=(',', ':'),
+                sort_keys=False, default=str, indent=None).strip() + '\n'
+
+    return resultFunc
 
 
 def getFilters(conn, fields, filtersValue=None, queryParams={},
@@ -209,6 +245,20 @@ def getSortList(conn, fields=None, sortValue=None, sortDir=None):
     return sort
 
 
+def preferredFormat(format):
+    """
+    Given a format value, return the canonical format value or None if it is
+    not a known format.
+
+    :param format: the proposed format.
+    :returns: the canonical format name or None if unknown.
+    """
+    format = str(format or 'list').lower()
+    if format not in dbFormatList:
+        return None
+    return format
+
+
 def queryDatabase(id, dbinfo, params):
     """
     Query a database.
@@ -238,7 +288,9 @@ def queryDatabase(id, dbinfo, params):
         'initwait': float(params.get('initwait', 0)),
     }
     client = params.get('clientid')
-    format = params.get('format')
+    format = preferredFormat(params.get('format'))
+    if not format:
+        raise DatabaseQueryException('Unknown output format.')
     filters = getFilters(conn, fields, params.get('filters'), params, {
         'limit', 'offset', 'sort', 'sortdir', 'fields', 'wait', 'poll',
         'initwait', 'clientid', 'filters', 'format', 'pretty'})
@@ -253,15 +305,17 @@ def queryDatabase(id, dbinfo, params):
             result['fields'][col].get('reference', 'column_' + str(col)):
             col for col in range(len(result['fields']))}
     result['datacount'] = len(result.get('data', []))
-    result['format'] = 'list'
-    mimeType = 'application/json'
-    if format == 'dict':
-        result = convertSelectDataToDict(result)
+    result['format'] = 'list'  # This is the current format
+    mimeType = dbFormatList.get(format, 'application/json')
 
     pretty = params.get('pretty') == 'true'
     dumpFunc = getattr(conn, 'jsonDumps', json.dumps)
-    if format == 'csv':
-        resultFunc = convertSelectDataToCSVGenerator(result, dumpFunc)
+
+    convertFunc = globals().get('convertSelectDataTo%s' % format.capitalize())
+    if convertFunc:
+        result = convertFunc(result, dumpFunc=dumpFunc, pretty=pretty)
+    if callable(result):
+        resultFunc = result
     else:
         # We could let Girder convert the results into JSON, but it is
         # marginally faster to dump the JSON ourselves, since we can exclude
@@ -270,7 +324,7 @@ def queryDatabase(id, dbinfo, params):
         def resultFunc():
             yield dumpFunc(
                 result, check_circular=False, separators=(',', ':'),
-                sort_keys=pretty, default=str, indent=2 if pretty else None)
+                sort_keys=False, default=str, indent=2 if pretty else None)
 
     return resultFunc, mimeType
 

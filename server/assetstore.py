@@ -29,7 +29,7 @@ from girder.utility.model_importer import ModelImporter
 
 from .dbs import getDBConnectorClassFromDialect, databaseFromUri, \
     getDBConnectorClass
-from .query import dbFormatList, queryDatabase
+from .query import dbFormatList, queryDatabase, preferredFormat
 
 
 dbInfoKey = 'databaseMetadata'
@@ -312,7 +312,8 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
                 file = fileModel.createFile(
                     creator=user, item=item, name=name, size=0,
                     assetstore=self.assetstore,
-                    mimeType=dbFormatList.get(params.get('format')),
+                    mimeType=dbFormatList.get(preferredFormat(params.get(
+                        'format'))),
                     saveFile=False)
             if file.get(dbInfoKey) and not file[dbInfoKey].get('imported'):
                 raise GirderException(

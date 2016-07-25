@@ -747,10 +747,33 @@ class FileTest(base.TestCase):
         self.assertEqual(len(resp.json['data']), 1)
         self.assertEqual(resp.json['data'][0][0], 'RUTLAND')
 
-    def testFileDatabaseSelectDictFormat(self):
+    def testFileDatabaseSelectFormats(self):
         fileId, fileId2, fileId3 = self._setupDbFiles()
-        params = {'sort': 'town', 'limit': 5, 'format': 'dict'}
+        params = {
+            'sort': 'town',
+            'limit': 5,
+            'fields': 'town,pop2010,shape_len,type'
+        }
         params['fields'] = 'town,pop2010,shape_len,type'
+        # Unknown format
+        params['format'] = 'unknownFormat'
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params=params)
+        self.assertStatus(resp, 400)
+        self.assertIn('Unknown output format', resp.json['message'])
+        # List format
+        params['format'] = 'list'
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(resp.json['fields'], [
+            'town', 'pop2010', 'shape_len', 'type'])
+        self.assertEqual(resp.json['columns'], {
+            'town': 0, 'pop2010': 1, 'shape_len': 2, 'type': 3})
+        self.assertTrue(isinstance(resp.json['data'][0], list))
+        self.assertEqual(resp.json['data'][0][0], 'ABINGTON')
+        # Dict format
+        params['format'] = 'dict'
         resp = self.request(path='/file/%s/database/select' % (
             fileId, ), user=self.user, params=params)
         self.assertStatusOk(resp)
@@ -761,6 +784,45 @@ class FileTest(base.TestCase):
         self.assertTrue(isinstance(resp.json['data'][0], dict))
         self.assertEqual(set(resp.json['data'][0].keys()),
                          set(['town', 'pop2010', 'shape_len', 'type']))
+        self.assertEqual(resp.json['data'][1]['town'], 'ACTON')
+        # Capitalization doesn't matter
+        params['format'] = 'DICT'
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(resp.json['fields'], [
+            'town', 'pop2010', 'shape_len', 'type'])
+        self.assertEqual(resp.json['columns'], {
+            'town': 0, 'pop2010': 1, 'shape_len': 2, 'type': 3})
+        self.assertTrue(isinstance(resp.json['data'][0], dict))
+        self.assertEqual(set(resp.json['data'][0].keys()),
+                         set(['town', 'pop2010', 'shape_len', 'type']))
+        self.assertEqual(resp.json['data'][2]['town'], 'ACUSHNET')
+        # csv format
+        params['format'] = 'csv'
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params=params, isJson=False)
+        self.assertStatusOk(resp)
+        data = self.getBody(resp)
+        self.assertEqual(len(data.split('\r\n')), 7)
+        self.assertEqual(data.split('\r\n')[0], params['fields'])
+        self.assertEqual(data.split('\r\n')[4].split(',')[0], 'ADAMS')
+        # JSON simple format
+        params['format'] = 'json'
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(resp.json[4]['town'], 'AGAWAM')
+        # JSON Array format
+        params['format'] = 'JSONArray'
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params=params, isJson=False)
+        self.assertStatusOk(resp)
+        data = self.getBody(resp)
+        self.assertEqual(len(data.split('\n')), 6)
+        self.assertEqual(set(json.loads(data.split('\n')[0]).keys()),
+                         set(['town', 'pop2010', 'shape_len', 'type']))
+        self.assertEqual(json.loads(data.split('\n')[0])['town'], 'ABINGTON')
 
     def testFileDatabaseSelectClient(self):
         fileId, fileId2, fileId3 = self._setupDbFiles()
