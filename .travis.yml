@@ -46,8 +46,7 @@ before_install:
 
     - mkdir -p $HOME/.cache/node_modules || true
     - ln -sf $HOME/.cache/node_modules .
-    # - nvm install v2.3.3
-    - nvm install v4.4.7
+    - nvm install v2.3.3
     - npm install -g npm
     - node --version
     - npm --version
