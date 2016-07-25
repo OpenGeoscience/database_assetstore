@@ -18,6 +18,7 @@
 #############################################################################
 
 import cherrypy
+import json
 import six
 from six.moves import urllib
 
@@ -179,16 +180,24 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
             header disposition-type value.
         :type contentDisposition: str or None
         :type extraParameters: str, dictionary, or None.  url encoded query
-            string or a dictionary of parameters to add to the query.
+            string, JSON-encoded dictionary, or a Python dictionary of
+            parameters to add to the query.
         :returns: a function that returns a generator for the data.
         """
         dbinfo = getDbInfoForFile(file, self.assetstore)
         params = getQueryParamsForFile(file, True)
         if extraParameters:
             if isinstance(extraParameters, six.string_types):
-                extraParameters = {
-                    key: value for (key, value) in urllib.parse.parse_qsl(
-                        extraParameters, keep_blank_values=True)}
+                try:
+                    extraParameters = json.loads(extraParameters)
+                except ValueError:
+                    extraParameters = {
+                        key: value for (key, value) in urllib.parse.parse_qsl(
+                            extraParameters, keep_blank_values=True)}
+            if not isinstance(extraParameters, dict):
+                raise GirderException(
+                    'The extraParameters field must either be a dictionary, a '
+                    'JSON-encoded dictionary, or a url query-encoded string.')
             params.update(extraParameters)
         resultFunc, mimeType = queryDatabase(file.get('_id'), dbinfo, params)
         file['mimeType'] = mimeType
