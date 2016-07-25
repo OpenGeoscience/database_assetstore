@@ -46,10 +46,11 @@ def convertSelectDataToCsv(result, dumpFunc=json.dumps, *args, **kargs):
     allowedTypes = six.string_types + six.integer_types + (
         float, type(None), datetime.datetime, decimal.Decimal)
     disallowedTypes = (bson.binary.Binary, )
+    data = convertSelectDataToList(result)['data']
 
     def resultFunc():
         yield writer.writerow(result['fields'])
-        for row in result['data']:
+        for row in data:
             row = [value if isinstance(value, allowedTypes) and
                    not isinstance(value, disallowedTypes) else
                    dumpFunc(value, check_circular=False, separators=(',', ':'),
@@ -65,12 +66,13 @@ def convertSelectDataToDict(result, *args, **kargs):
     Convert data in list format to dictionary format.  The column names are
     used as the keys for each row.
 
-    :param result: the initial select results.
+    :param result: the initial select results.  This can be altered.
     :returns: the results with data converted from a list of lists to a list of
               dictionaries.
     """
-    result['data'] = convertSelectDataToJson(result)
-    result['format'] = 'dict'
+    if result['format'] != 'dict':
+        result['data'] = convertSelectDataToJson(result)
+        result['format'] = 'dict'
     return result
 
 
@@ -83,9 +85,11 @@ def convertSelectDataToJson(result, *args, **kargs):
     :returns: the results with only the data.  The data is converted from a
               list of lists to a list of dictionaries.
     """
-    columns = {result['columns'][col]: col for col in result['columns']}
-    data = [{columns[i]: row[i] for i in range(len(row))}
-            for row in result['data']]
+    data = result['data']
+    if result['format'] == 'list':
+        columns = {result['columns'][col]: col for col in result['columns']}
+        data = [{columns[i]: row[i] for i in range(len(row))}
+                for row in data]
     return data
 
 
@@ -108,6 +112,24 @@ def convertSelectDataToJsonlines(result, dumpFunc=json.dumps, *args, **kargs):
                 sort_keys=False, default=str, indent=None).strip() + '\n'
 
     return resultFunc
+
+
+def convertSelectDataToList(result, *args, **kargs):
+    """
+    Convert data in list format to dictionary format.  The column names are
+    used as the keys for each row.
+
+    :param result: the initial select results.  This can be altered.
+    :returns: the results with data converted from a list of lists to a list of
+              dictionaries.
+    """
+    if result['format'] == 'dict':
+        columns = [col[-1] for col in sorted(
+            [(result['columns'][col], col) for col in result['columns']])]
+        result['data'] = [[row.get(col) for col in columns]
+                          for row in result['data']]
+        result['format'] = 'list'
+    return result
 
 
 def getFilters(conn, fields, filtersValue=None, queryParams={},
@@ -305,8 +327,12 @@ def queryDatabase(id, dbinfo, params):
                 result['fields'][col], dict) else
             result['fields'][col].get('reference', 'column_' + str(col)):
             col for col in range(len(result['fields']))}
-    result['datacount'] = len(result.get('data', []))
-    result['format'] = 'list'  # This is the current format
+    if 'datacount' not in result:
+        result['datacount'] = len(result.get('data', []))
+    if not result.get('format'):
+        result['format'] = 'list'  # This is the current format
+    if result.get('format') not in ('list', 'dict'):
+        raise DatabaseQueryException('Unknown internal format.')
     mimeType = dbFormatList.get(format, 'application/json')
 
     pretty = params.get('pretty') == 'true'
