@@ -406,16 +406,25 @@ class AssetstoreTest(base.TestCase):
         self.assertStatus(resp, 206)
         self.assertEqual(self.getBody(resp), '')
         # Test more complex extraParameters
-        params = {
-            'extraParameters': urllib.parse.urlencode({
-                'format': 'list',
-                'fields': json.dumps(['town', 'pop2000', 'pop2010']),
-                'sort': json.dumps([['pop2000', -1]]),
-                'filters': json.dumps([{
-                    'field': 'pop2000', 'operator': '<', 'value': 100000}]),
-                'limit': 5
-            })
+        extra = {
+            'format': 'list',
+            'fields': json.dumps(['town', 'pop2000', 'pop2010']),
+            'sort': json.dumps([['pop2000', -1]]),
+            'filters': json.dumps([{
+                'field': 'pop2000', 'operator': '<', 'value': 100000}]),
+            'limit': 5
         }
+        params = {'extraParameters': urllib.parse.urlencode(extra)}
+        resp = self.request(
+            path='/item/%s/download' % str(townItem['_id']), params=params)
+        self.assertStatusOk(resp)
+        data = resp.json
+        self.assertEqual(data['datacount'], 5)
+        self.assertEqual(data['fields'], ['town', 'pop2000', 'pop2010'])
+        self.assertLess(int(data['data'][0][1]), 100000)
+        self.assertLess(int(data['data'][1][1]), int(data['data'][0][1]))
+        # Test with JSON extraParameters
+        params = {'extraParameters': json.dumps(extra)}
         resp = self.request(
             path='/item/%s/download' % str(townItem['_id']), params=params)
         self.assertStatusOk(resp)
@@ -442,6 +451,10 @@ class AssetstoreTest(base.TestCase):
         self.assertEqual(data['fields'], ['town', 'pop2000', 'pop2010'])
         self.assertLess(int(data['data'][0][1]), 100000)
         self.assertLess(int(data['data'][1][1]), int(data['data'][0][1]))
+        # Test with bad extraParameters
+        with six.assertRaisesRegex(self, Exception,
+                                   'JSON-encoded dictionary, or a url'):
+            adapter.downloadFile(townFile, headers=False, extraParameters=6)
 
     def testAssetstoreFileCopy(self):
         # Create assetstore
@@ -541,3 +554,27 @@ class AssetstoreTest(base.TestCase):
         event.info['value'] = []
         self.assertIsNone(validateSettings(event, plugin_name))
         self.assertEqual(event.info['value'], [])
+
+    def testUnicodeInDownload(self):
+        # Create assetstore
+        resp = self.request(path='/assetstore', method='POST', user=self.admin,
+                            params=self.dbParams)
+        self.assertStatusOk(resp)
+        assetstore1 = resp.json
+        adapter = assetstore_utilities.getAssetstoreAdapter(assetstore1)
+
+        def genDownload():
+            yield u'\u0441\u0442\u0440\u043e\u043a\u0430 Unicode \U0001F603'
+
+        file = {}
+        newFunc, end = adapter._getDownloadSize(file, genDownload, 0, None)
+        data = b''.join(newFunc())
+        self.assertEqual(len(data), 25)
+        self.assertEqual(file['size'], 25)
+        self.assertEqual(end, 25)
+        newFunc, end = adapter._getDownloadSize(file, genDownload, 3, 6)
+        data = b''.join(newFunc())
+        self.assertEqual(len(data), 3)
+        self.assertEqual(data, b'\x82\xd1\x80')
+        self.assertEqual(file['size'], 25)
+        self.assertEqual(end, 6)
