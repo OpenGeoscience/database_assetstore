@@ -32,7 +32,8 @@ from girder.utility.progress import ProgressContext
 
 from . import assetstore, dbs
 from .assetstore import dbInfoKey
-from .query import DatabaseQueryException, dbFormatList, queryDatabase
+from .query import DatabaseQueryException, dbFormatList, queryDatabase, \
+    preferredFormat
 
 
 class DatabaseFileResource(File):
@@ -371,10 +372,8 @@ class DatabaseAssetstoreResource(Resource):
         if not len(tables):
             raise RestException(
                 'The list of tables must have at least one value.')
-        format = params.get('format')
+        format = preferredFormat(params.get('format'))
         if not format:
-            format = 'list'
-        if format not in dbFormatList:
             raise RestException(
                 'Format must be one of %s.' % ', '.join(list(dbFormatList)))
 
