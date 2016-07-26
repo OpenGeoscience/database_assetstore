@@ -15,7 +15,7 @@ dbFormatList = {
     'dict': 'application/json',
     'csv': 'text/csv',
     'json': 'application/json',  # Same as the data component of dict
-    'jsonarray': 'text/plain',
+    'jsonlines': 'text/plain',
 }
 
 
@@ -89,9 +89,9 @@ def convertSelectDataToJson(result, *args, **kargs):
     return data
 
 
-def convertSelectDataToJsonarray(result, dumpFunc=json.dumps, *args, **kargs):
+def convertSelectDataToJsonlines(result, dumpFunc=json.dumps, *args, **kargs):
     """
-    Convert data in list format to the Mongo JSONArray format.  This has each
+    Convert data in list format to the Mongo JSON lines format.  This has each
     line be one data item represented as an independent JSON document.  The
     column names are used as the keys for each row.
 
@@ -253,7 +253,7 @@ def preferredFormat(format):
     :param format: the proposed format.
     :returns: the canonical format name or None if unknown.
     """
-    format = str(format or 'list').lower()
+    format = str(format or 'list').replace('_', '').lower()
     if format not in dbFormatList:
         return None
     return format

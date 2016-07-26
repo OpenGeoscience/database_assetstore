@@ -813,8 +813,8 @@ class FileTest(base.TestCase):
             fileId, ), user=self.user, params=params)
         self.assertStatusOk(resp)
         self.assertEqual(resp.json[4]['town'], 'AGAWAM')
-        # JSON Array format
-        params['format'] = 'JSONArray'
+        # JSON Lines format
+        params['format'] = 'JSON_Lines'
         resp = self.request(path='/file/%s/database/select' % (
             fileId, ), user=self.user, params=params, isJson=False)
         self.assertStatusOk(resp)
