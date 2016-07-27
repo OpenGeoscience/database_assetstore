@@ -81,8 +81,6 @@ class MongoConnector(base.DatabaseConnector):
         self.conn = None
 
     def performSelect(self, fields, queryProps={}, filters=[], client=None):
-        coll = self.connect()
-
         result = super(MongoConnector, self).performSelect(
             fields, queryProps, filters)
 
@@ -115,12 +113,17 @@ class MongoConnector(base.DatabaseConnector):
         elif 'filter' in opts:
             del opts['filter']
 
-        results = coll.find(**opts)
-        results = [convertFields(result['fields'], row) for row in results]
+        if queryProps.get('limit') == 0:
+            result['data'] = []
+        else:
+            coll = self.connect()
 
-        result['data'] = results
+            results = coll.find(**opts)
+            results = [convertFields(result['fields'], row) for row in results]
 
-        self.disconnect()
+            result['data'] = results
+
+            self.disconnect()
 
         return result
 

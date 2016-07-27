@@ -456,6 +456,59 @@ class AssetstoreTest(base.TestCase):
                                    'JSON-encoded dictionary, or a url'):
             adapter.downloadFile(townFile, headers=False, extraParameters=6)
 
+        # Test with 0 and none limits
+        params = {
+            'format': 'list',
+            'fields': 'town,pop2000',
+            'sort': 'pop2000',
+            'filters': json.dumps([{
+                'field': 'pop2000', 'operator': '>', 'value': 25000}]),
+        }
+        params['limit'] = 0
+        func = adapter.downloadFile(
+            townFile, headers=False, extraParameters=params)
+        jsondata = ''.join([part for part in func()])
+        data = json.loads(jsondata)
+        self.assertEqual(data['datacount'], 0)
+        self.assertEqual(data['fields'], ['town', 'pop2000'])
+        # It shouldn't matter if we ask for this via json, query, or object
+        func = adapter.downloadFile(
+            townFile, headers=False,
+            extraParameters=urllib.parse.urlencode(params))
+        self.assertEqual(''.join([part for part in func()]), jsondata)
+        func = adapter.downloadFile(
+            townFile, headers=False, extraParameters=json.dumps(params))
+        self.assertEqual(''.join([part for part in func()]), jsondata)
+
+        params['limit'] = 'none'
+        func = adapter.downloadFile(
+            townFile, headers=False, extraParameters=params)
+        jsondata = ''.join([part for part in func()])
+        data = json.loads(jsondata)
+        self.assertEqual(data['datacount'], 71)
+        self.assertEqual(data['fields'], ['town', 'pop2000'])
+        # It shouldn't matter if we ask for this via json, query, or object
+        func = adapter.downloadFile(
+            townFile, headers=False,
+            extraParameters=urllib.parse.urlencode(params))
+        self.assertEqual(''.join([part for part in func()]), jsondata)
+        func = adapter.downloadFile(
+            townFile, headers=False, extraParameters=json.dumps(params))
+        self.assertEqual(''.join([part for part in func()]), jsondata)
+
+        # None can also be used as unlimited
+        params['limit'] = None
+        func = adapter.downloadFile(
+            townFile, headers=False, extraParameters=params)
+        self.assertEqual(''.join([part for part in func()]), jsondata)
+        func = adapter.downloadFile(
+            townFile, headers=False,
+            extraParameters=urllib.parse.urlencode(params))
+        self.assertEqual(''.join([part for part in func()]), jsondata)
+        func = adapter.downloadFile(
+            townFile, headers=False, extraParameters=json.dumps(params))
+        self.assertEqual(''.join([part for part in func()]), jsondata)
+
     def testAssetstoreFileCopy(self):
         # Create assetstore
         resp = self.request(path='/assetstore', method='POST', user=self.admin,

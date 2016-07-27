@@ -277,8 +277,9 @@ def queryDatabase(id, dbinfo, params):
         raise DatabaseConnectorException('Failed to connect to database.')
     fields = conn.getFieldInfo()
     queryProps = {
-        'limit': int(50 if params.get('limit') is None
-                     else params.get('limit')),
+        'limit':
+            six.MAXSIZE if params.get('limit') in ('none', 'None') else int(
+                50 if params.get('limit') is None else params.get('limit')),
         'offset': int(params.get('offset', 0) or 0),
         'sort': getSortList(conn, fields, params.get('sort'),
                             params.get('sortdir')),

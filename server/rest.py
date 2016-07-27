@@ -140,8 +140,8 @@ class DatabaseFileResource(File):
     @describeRoute(
         Description('Get data from a database link.')
         .param('id', 'The ID of the file.', paramType='path')
-        .param('limit', 'Result set size limit (default=50).',
-               required=False, dataType='int')
+        .param('limit', 'Result set size limit (default=50).  Use \'none\' '
+               'to return all rows (0 returns 0 rows)', required=False)
         .param('offset', 'Offset into result set (default=0).',
                required=False, dataType='int')
         .param('sort', 'Either a field to sort the results by or a JSON list '
@@ -329,8 +329,8 @@ class DatabaseAssetstoreResource(Resource):
                'JSON list of fields and directions.', required=False)
         .param('fields', 'The default fields to return.', required=False)
         .param('filters', 'The default fields to return.', required=False)
-        .param('limit', 'The default limit of rows to return.', required=False,
-               dataType='int')
+        .param('limit', 'The default limit of rows to return.  Use \'none\' '
+               'to return all rows (0 returns 0 rows)', required=False)
         .param('format', 'The default format return.', required=False,
                enum=list(dbFormatList))
         .param('progress', 'Whether to record progress on this operation ('
