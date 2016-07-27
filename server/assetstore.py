@@ -200,6 +200,12 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
                     'JSON-encoded dictionary, or a url query-encoded string.')
             params.update(extraParameters)
         resultFunc, mimeType = queryDatabase(file.get('_id'), dbinfo, params)
+        # If we have been asked for inline data, change some mime types so
+        # most browsers will show the data inline, even if the actual mime type
+        # should be different (csv files are the clear example).
+        if contentDisposition == 'inline' and mimeType not in (
+                'application/json', 'text/plain'):
+            mimeType = 'text/plain'
         file['mimeType'] = mimeType
 
         # If we have been asked for headers, recheck if we should have a range
