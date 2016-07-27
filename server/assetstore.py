@@ -199,6 +199,8 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
                     'The extraParameters field must either be a dictionary, a '
                     'JSON-encoded dictionary, or a url query-encoded string.')
             params.update(extraParameters)
+            if params.get('limit', 'notpresent') is None:
+                params['limit'] = 'none'
         resultFunc, mimeType = queryDatabase(file.get('_id'), dbinfo, params)
         file['mimeType'] = mimeType
 
