@@ -341,9 +341,14 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
                 dbinfo[key] = params.get(key)
             file[dbInfoKey] = dbinfo
             # Validate that we can perform queries by trying to download 1
-            # record from the file
+            # record from the file.
+            #   This intentionally encodes extraParameters as JSON.  It could
+            # pass it as a python dictionary or encode it as a url query string,
+            # but another Girder plugin has expressed a preference for JSON as
+            # the de facto standard for extraParameters.
             downloadFunc = self.downloadFile(
-                file.copy(), headers=False, extraParameters='limit=1')
+                file.copy(), headers=False, extraParameters=json.dumps({
+                    'limit': 1}))
             # Test the download without keeping it
             [None for chunk in downloadFunc()]
             # Now save the new file
