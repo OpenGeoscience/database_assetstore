@@ -18,11 +18,30 @@
 ##############################################################################
 
 import bson.json_util
+import re
 import six
 from pymongo import MongoClient
 
+from girder import logger as log
+
 from . import base
 from .base import DatabaseConnectorException
+
+
+MongoOperators = {
+    'eq': '$eq',
+    'ne': '$ne',
+    'gt': '$gt',
+    'gte': '$gte',
+    'lt': '$lt',
+    'lte': '$lte',
+    'in': '$in',
+    'not_in': '$nin',
+    'regex': '$regex',
+    # not_regex, search, and not_search are handled as special cases
+    # search is treated as a case-insensitive, multiline regex
+    # is and not_is are the same as $eq and $ne unless the value is None
+}
 
 
 def inferFields(records):
@@ -52,16 +71,27 @@ class MongoConnector(base.DatabaseConnector):
         operator = filt['operator']
         operator = base.FilterOperators.get(operator)
 
-        if operator in ['eq', 'ne', 'lt', 'gte']:
-            field = filt['field']
-            value = filt['value']
-            operator = '$' + operator
-
-            clauses.append({field: {operator: value}})
+        field = filt['field']
+        value = filt['value']
+        if operator in MongoOperators:
+            operator = MongoOperators[operator]
+        elif operator == 'not_regex':
+            operator = '$not'
+            value = re.compile(filt['value'])
+        elif operator in ('search', 'not_search'):
+            operator = '$regex' if operator == 'search' else '$not'
+            value = re.compile(filt['value'],
+                               re.IGNORECASE | re.MULTILINE | re.DOTALL)
+        elif operator in ('is', 'not_is'):
+            if value is None:
+                operator = '$in' if operator == 'is' else '$nin'
+                value = [None]
+            else:
+                operator = '$eq' if operator == 'is' else '$ne'
         else:
             raise DatabaseConnectorException('operator %s unimplemented' % (
                 operator))
-
+        clauses.append({field: {operator: value}})
         return clauses
 
     def connect(self):
@@ -114,6 +144,9 @@ class MongoConnector(base.DatabaseConnector):
             result['data'] = []
         else:
             coll = self.connect()
+            log.info('Query: %s', bson.json_util.dumps(
+                opts, check_circular=False, separators=(',', ':'),
+                sort_keys=False, default=str, indent=None))
             cursor = coll.find(**opts)
             result['datacount'] = cursor.count(True)
             result['data'] = cursor

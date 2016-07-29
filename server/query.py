@@ -5,6 +5,8 @@ import decimal
 import json
 import six
 
+from six.moves import range
+
 from girder.models.model_base import GirderException
 
 from .dbs import getDBConnector, FilterOperators, DatabaseConnectorException
@@ -404,7 +406,7 @@ def validateFilter(conn, fields, filter):
             not isinstance(filter['field'], dict) and
             'value' not in filter['field'] and 'func' not in filter['field']):
         raise DatabaseQueryException('Filters must be on known fields.')
-    if not filter.get('value'):
+    if 'value' not in filter:
         raise DatabaseQueryException('Filters must have a value or rfunc.')
     if not conn.checkOperatorDatatype(filter['field'], filter['operator'],
                                       fields):
