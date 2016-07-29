@@ -67,20 +67,23 @@ class MongoConnector(base.DatabaseConnector):
 
         self.initialized = True
 
-    def _applyFilter(self, clauses, filt):
-        operator = filt['operator']
+    def _applyFilter(self, clauses, filter):
+        operator = filter['operator']
         operator = base.FilterOperators.get(operator)
 
-        field = filt['field']
-        value = filt['value']
+        field = filter['field']
+        if not isinstance(field, six.string_types):
+            raise DatabaseConnectorException(
+                'Filters must use a known field as the left value')
+        value = filter['value']
         if operator in MongoOperators:
             operator = MongoOperators[operator]
         elif operator == 'not_regex':
             operator = '$not'
-            value = re.compile(filt['value'])
+            value = re.compile(filter['value'])
         elif operator in ('search', 'not_search'):
             operator = '$regex' if operator == 'search' else '$not'
-            value = re.compile(filt['value'],
+            value = re.compile(filter['value'],
                                re.IGNORECASE | re.MULTILINE | re.DOTALL)
         elif operator in ('is', 'not_is'):
             if value is None:
@@ -96,10 +99,7 @@ class MongoConnector(base.DatabaseConnector):
 
     def connect(self):
         self.conn = MongoClient(self.databaseUrl)
-        if self.databaseName:
-            self.database = self.conn[self.databaseName]
-        else:
-            self.database = self.conn.get_default_database()
+        self.database = self.conn[self.databaseName]
         return self.database[self.collection]
 
     def disconnect(self):
@@ -117,12 +117,9 @@ class MongoConnector(base.DatabaseConnector):
         opts = {}
         for k, v in six.iteritems(queryProps):
             target = None
-            if k == 'fields':
+            if k == 'fields' and v and v != []:
                 target = 'projection'
-                if v == []:
-                    v = None
-                else:
-                    v = {field: True for field in v}
+                v = {field: True for field in v}
                 if '_id' not in v:
                     v['_id'] = False
             elif k == 'offset':
@@ -136,8 +133,6 @@ class MongoConnector(base.DatabaseConnector):
 
         if len(filterQueryClauses) > 0:
             opts['filter'] = {'$and': filterQueryClauses}
-        elif 'filter' in opts:
-            del opts['filter']
 
         result['format'] = 'dict'
         if queryProps.get('limit') == 0:

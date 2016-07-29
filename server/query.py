@@ -209,6 +209,8 @@ def getFieldsList(conn, fields=None, fieldsValue=None):
                 field, fields,
                 allowFunc=getattr(conn, 'allowFieldFunctions', False)):
             raise DatabaseQueryException('Fields must use known fields %r.')
+    if not len(fieldsList):
+        return None
     return fieldsList
 
 
