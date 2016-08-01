@@ -31,7 +31,7 @@ before_install:
     - ln -sf $main_path $girder_path/plugins/database_assetstore
     - ls -l $girder_path/plugins
 
-    - export MONGO_VERSION=3.0.7
+    - export MONGO_VERSION=3.2.8
     # From python core, not sure if strictly necessary.
     - if [ ${TRAVIS_PYTHON_VERSION:0:1} == "3" ]; then export PY3="true"; else export PY2="true"; fi
     - if [ -n "${PY3}" ]; then export IGNORE_PLUGINS=hdfs_assetstore,metadata_extractor; fi
@@ -79,7 +79,7 @@ script:
     - gunzip -c data/plugins/database_assetstore/testdb.sql.gz | psql -U postgres sampledb
     - psql -U postgres -h 127.0.0.1 sampledb -c "SELECT table_type,table_name FROM information_schema.tables WHERE table_schema='public' order by table_name;" | cat
     # Load mongo and show that we loaded the database properly
-    - bunzip2 -c data/plugins/database_assetstore/mongodb.permits.json.bz2 | mongoimport --db boston2 --collection permits
+    - bunzip2 -c data/plugins/database_assetstore/mongodb.permits.json.bz2 | mongoimport --db boston --collection permits
     - mongo boston --eval 'db.permits.count()'
 
     # Only some functions are available in the version that Travis has.

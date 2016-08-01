@@ -135,8 +135,8 @@ class DbsMongoTest(base.TestCase):
         self.assertEqual(len(resp.json['data']), 5)
         self.assertNotEqual(resp.json['data'][:1], lastData['data'][:1])
         self.assertGreater(
-            resp.json['data'][0][resp.json['columns']['issued_date']],
-            lastData['data'][0][lastData['columns']['issued_date']])
+            resp.json['data'][0][resp.json['columns']['issued_date']]['$date'],
+            lastData['data'][0][lastData['columns']['issued_date']]['$date'])
 
     def testMongoDatabaseSelectFields(self):
         # Unknown fields aren't allowed
