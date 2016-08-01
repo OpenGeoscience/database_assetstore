@@ -33,10 +33,6 @@ def inferFields(records):
     return list(fields)
 
 
-def convertFields(headers, row):
-    return map(lambda field: row.get(field), headers)
-
-
 class MongoConnector(base.DatabaseConnector):
     name = 'mongo'
     databaseNameRequired = False
@@ -113,16 +109,14 @@ class MongoConnector(base.DatabaseConnector):
         elif 'filter' in opts:
             del opts['filter']
 
+        result['format'] = 'dict'
         if queryProps.get('limit') == 0:
             result['data'] = []
         else:
             coll = self.connect()
-
-            results = coll.find(**opts)
-            results = [convertFields(result['fields'], row) for row in results]
-
-            result['data'] = results
-
+            cursor = coll.find(**opts)
+            result['datacount'] = cursor.count(True)
+            result['data'] = cursor
             self.disconnect()
 
         return result

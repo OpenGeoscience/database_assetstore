@@ -897,7 +897,11 @@ class FileTest(base.TestCase):
         # Create a test database connector so we can check polling
         from girder.plugins.database_assetstore import dbs
 
-        dbInfo = {'queries': 0, 'data': [[1]]}
+        dbInfo = {
+            'queries': 0,
+            'data': [[1]],
+            'format': 'list'
+        }
 
         class TestConnector(dbs.base.DatabaseConnector):
             name = 'test'
@@ -916,6 +920,7 @@ class FileTest(base.TestCase):
                 results = super(TestConnector, self).performSelect(
                     *args, **kwargs)
                 results['data'] = dbInfo['data']
+                results['format'] = dbInfo['format']
                 return results
 
             @staticmethod
@@ -970,3 +975,34 @@ class FileTest(base.TestCase):
         with self.assertRaises(Exception):
             resp = self.request(path='/file/%s/database/select' % (
                 fileId, ), user=self.user, params=params)
+
+        # Test that we can handle different data formats
+        dbInfo['data'] = [{'test': 1}]
+        dbInfo['format'] = 'dict'
+
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user)
+        self.assertStatusOk(resp)
+        self.assertEqual(resp.json['data'], [[1]])
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params={'format': 'dict'})
+        self.assertStatusOk(resp)
+        self.assertEqual(resp.json['data'], [{'test': 1}])
+
+        dbInfo['data'] = [[1]]
+        dbInfo['format'] = 'list'
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user)
+        self.assertStatusOk(resp)
+        self.assertEqual(resp.json['data'], [[1]])
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params={'format': 'dict'})
+        self.assertStatusOk(resp)
+        self.assertEqual(resp.json['data'], [{'test': 1}])
+
+        dbInfo['data'] = [(1, )]
+        dbInfo['format'] = 'unknown'
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user)
+        self.assertStatus(resp, 400)
+        self.assertIn('Unknown internal format', resp.json['message'])
