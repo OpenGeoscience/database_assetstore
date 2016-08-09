@@ -154,7 +154,11 @@ class DbsMongoTest(base.TestCase):
         self.assertEqual(resp.json['columns'], {'zip': 0, 'comments': 1})
 
     def testMongoDatabaseSelectFilters(self):
-        params = {'limit': 5, 'sort': 'zip', 'fields': 'zip,comments'}
+        params = {
+            'limit': 5,
+            'sort': 'zip',
+            'fields': 'zip,comments,occupancytype'
+        }
         params['filters'] = json.dumps([])
         resp = self.request(path='/file/%s/database/select' % (
             self.dbFileId, ), user=self.admin, params=params)
@@ -184,129 +188,65 @@ class DbsMongoTest(base.TestCase):
         self.assertEqual(len(resp.json['data']), 10)
         self.assertEqual(resp.json['data'][0][0], '02133')
         self.assertEqual(resp.json['data'][9][0], '02134')
-        """
+        params['sort'] = json.dumps(['zip', 'comments'])
         params['filters'] = json.dumps([{
-            'field': 'town', 'operator': 'gt', 'value': 'BOS'}])
+            'field': 'comments', 'operator': 'regex', 'value': 'kitchen'}])
         resp = self.request(path='/file/%s/database/select' % (
             self.dbFileId, ), user=self.admin, params=params)
         self.assertStatusOk(resp)
-        self.assertEqual(len(resp.json['data']), 5)
-        self.assertEqual(resp.json['data'][0][0], 'BOSTON')
+        self.assertIn('kitchen', resp.json['data'][0][1])
         params['filters'] = json.dumps([{
-            'field': 'town', 'operator': 'noop', 'value': 'BOS'}])
-        resp = self.request(path='/file/%s/database/select' % (
-            self.dbFileId, ), user=self.admin, params=params)
-        self.assertStatus(resp, 400)
-        self.assertIn('Unknown filter operator', resp.json['message'])
-        # Test a filter composed of a list
-        params['filters'] = json.dumps([['town', 'gt', 'BOS']])
+            'field': 'comments', 'operator': 'not_regex', 'value': 'kitchen'}])
         resp = self.request(path='/file/%s/database/select' % (
             self.dbFileId, ), user=self.admin, params=params)
         self.assertStatusOk(resp)
-        self.assertEqual(len(resp.json['data']), 5)
-        self.assertEqual(resp.json['data'][0][0], 'BOSTON')
-        params['filters'] = json.dumps([['town', 'BOSTON']])
+        self.assertNotIn('kitchen', resp.json['data'][0][1])
+        params['filters'] = json.dumps([{
+            'field': 'comments', 'operator': 'search', 'value': 'kItChen'}])
         resp = self.request(path='/file/%s/database/select' % (
             self.dbFileId, ), user=self.admin, params=params)
         self.assertStatusOk(resp)
-        self.assertEqual(len(resp.json['data']), 1)
-        self.assertEqual(resp.json['data'][0][0], 'BOSTON')
-        params['filters'] = json.dumps([['town', 'gt', 'BOSTON', 'extra']])
-        resp = self.request(path='/file/%s/database/select' % (
-            self.dbFileId, ), user=self.admin, params=params)
-        self.assertStatus(resp, 400)
-        self.assertIn('must have two or three components',
-                      resp.json['message'])
-        # Fail on an unknown field
-        params['filters'] = json.dumps([['unknown', 'BOSTON']])
-        resp = self.request(path='/file/%s/database/select' % (
-            self.dbFileId, ), user=self.admin, params=params)
-        self.assertStatus(resp, 400)
-        self.assertIn('Filters must be on known fields', resp.json['message'])
-        # Fail without a value
+        self.assertIn('kitchen', resp.json['data'][0][1].lower())
         params['filters'] = json.dumps([{
-            'field': 'town'}])
+            'field': 'comments', 'operator': 'not_search', 'value': 'family'}])
         resp = self.request(path='/file/%s/database/select' % (
             self.dbFileId, ), user=self.admin, params=params)
-        self.assertStatus(resp, 400)
-        self.assertIn('must have a value or rfunc', resp.json['message'])
-        """
+        self.assertStatusOk(resp)
+        self.assertNotIn('family', resp.json['data'][0][1].lower())
+        params['filters'] = json.dumps([{
+            'field': 'comments',
+            'operator': 'in',
+            'value': ['Fire Alarm', 'new boiler']}])
+        resp = self.request(path='/file/%s/database/select' % (
+            self.dbFileId, ), user=self.admin, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(resp.json['data'][0][1], 'Fire Alarm')
 
-    def XtestMongoDatabaseSelectFormats(self):
-        params = {
-            'sort': 'town',
-            'limit': 5,
-            'fields': 'town,pop2010,shape_len,type'
-        }
-        params['fields'] = 'town,pop2010,shape_len,type'
-        # Unknown format
-        params['format'] = 'unknownFormat'
-        resp = self.request(path='/file/%s/database/select' % (
-            self.dbFileId, ), user=self.admin, params=params)
-        self.assertStatus(resp, 400)
-        self.assertIn('Unknown output format', resp.json['message'])
-        # List format
-        params['format'] = 'list'
+        params['sort'] = json.dumps(['zip', 'occupancytype'])
+        params['filters'] = json.dumps([{
+            'field': 'occupancytype', 'operator': 'is', 'value': '1-7FAM'}])
         resp = self.request(path='/file/%s/database/select' % (
             self.dbFileId, ), user=self.admin, params=params)
         self.assertStatusOk(resp)
-        self.assertEqual(resp.json['fields'], [
-            'town', 'pop2010', 'shape_len', 'type'])
-        self.assertEqual(resp.json['columns'], {
-            'town': 0, 'pop2010': 1, 'shape_len': 2, 'type': 3})
-        self.assertTrue(isinstance(resp.json['data'][0], list))
-        self.assertEqual(resp.json['data'][0][0], 'ABINGTON')
-        # Dict format
-        params['format'] = 'dict'
+        self.assertEqual(resp.json['data'][0][2], '1-7FAM')
+        params['filters'] = json.dumps([{
+            'field': 'occupancytype', 'operator': 'is', 'value': None}])
         resp = self.request(path='/file/%s/database/select' % (
             self.dbFileId, ), user=self.admin, params=params)
         self.assertStatusOk(resp)
-        self.assertEqual(resp.json['fields'], [
-            'town', 'pop2010', 'shape_len', 'type'])
-        self.assertEqual(resp.json['columns'], {
-            'town': 0, 'pop2010': 1, 'shape_len': 2, 'type': 3})
-        self.assertTrue(isinstance(resp.json['data'][0], dict))
-        self.assertEqual(set(resp.json['data'][0].keys()),
-                         set(['town', 'pop2010', 'shape_len', 'type']))
-        self.assertEqual(resp.json['data'][1]['town'], 'ACTON')
-        # Capitalization doesn't matter
-        params['format'] = 'DICT'
+        self.assertEqual(resp.json['data'][0][2], None)
+        params['filters'] = json.dumps([{
+            'field': 'occupancytype', 'operator': 'is_not', 'value': '1-7FAM'}])
         resp = self.request(path='/file/%s/database/select' % (
             self.dbFileId, ), user=self.admin, params=params)
         self.assertStatusOk(resp)
-        self.assertEqual(resp.json['fields'], [
-            'town', 'pop2010', 'shape_len', 'type'])
-        self.assertEqual(resp.json['columns'], {
-            'town': 0, 'pop2010': 1, 'shape_len': 2, 'type': 3})
-        self.assertTrue(isinstance(resp.json['data'][0], dict))
-        self.assertEqual(set(resp.json['data'][0].keys()),
-                         set(['town', 'pop2010', 'shape_len', 'type']))
-        self.assertEqual(resp.json['data'][2]['town'], 'ACUSHNET')
-        # csv format
-        params['format'] = 'csv'
-        resp = self.request(path='/file/%s/database/select' % (
-            self.dbFileId, ), user=self.admin, params=params, isJson=False)
-        self.assertStatusOk(resp)
-        data = self.getBody(resp)
-        self.assertEqual(len(data.split('\r\n')), 7)
-        self.assertEqual(data.split('\r\n')[0], params['fields'])
-        self.assertEqual(data.split('\r\n')[4].split(',')[0], 'ADAMS')
-        # JSON simple format
-        params['format'] = 'json'
+        self.assertNotEqual(resp.json['data'][0][2], '1-7FAM')
+        params['filters'] = json.dumps([{
+            'field': 'occupancytype', 'operator': 'not_is', 'value': None}])
         resp = self.request(path='/file/%s/database/select' % (
             self.dbFileId, ), user=self.admin, params=params)
         self.assertStatusOk(resp)
-        self.assertEqual(resp.json[4]['town'], 'AGAWAM')
-        # JSON Lines format
-        params['format'] = 'JSON_Lines'
-        resp = self.request(path='/file/%s/database/select' % (
-            self.dbFileId, ), user=self.admin, params=params, isJson=False)
-        self.assertStatusOk(resp)
-        data = self.getBody(resp)
-        self.assertEqual(len(data.split('\n')), 6)
-        self.assertEqual(set(json.loads(data.split('\n')[0]).keys()),
-                         set(['town', 'pop2010', 'shape_len', 'type']))
-        self.assertEqual(json.loads(data.split('\n')[0])['town'], 'ABINGTON')
+        self.assertNotEqual(resp.json['data'][0][2], None)
 
     def XtestMongoDatabaseSelectClient(self):
         params = {'sort': 'town', 'limit': 1, 'clientid': 'test'}
