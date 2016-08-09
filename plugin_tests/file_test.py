@@ -459,6 +459,12 @@ class FileTest(base.TestCase):
             fileId, ), user=self.user, params=params)
         self.assertStatus(resp, 400)
         self.assertIn('must be a JSON list', resp.json['message'])
+        # A zero-length list is all of the fields
+        params['fields'] = json.dumps([])
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertGreater(len(resp.json['fields']), 2)
         # instead of a field name, you can use a function
         params['fields'] = json.dumps([
             'town',
@@ -507,7 +513,7 @@ class FileTest(base.TestCase):
         self.assertStatusOk(resp)
         self.assertEqual(len(resp.json['data']), 5)
         self.assertEqual(resp.json['data'][0][0], 'town')
-        # Function parameters must be fields, values, or otehr functions
+        # Function parameters must be fields, values, or other functions
         params['fields'] = json.dumps([
             {'func': 'lower', 'param': {'unknown': 'town'}}
         ])

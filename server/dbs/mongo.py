@@ -18,11 +18,30 @@
 ##############################################################################
 
 import bson.json_util
+import re
 import six
 from pymongo import MongoClient
 
+from girder import logger as log
+
 from . import base
 from .base import DatabaseConnectorException
+
+
+MongoOperators = {
+    'eq': '$eq',
+    'ne': '$ne',
+    'gt': '$gt',
+    'gte': '$gte',
+    'lt': '$lt',
+    'lte': '$lte',
+    'in': '$in',
+    'not_in': '$nin',
+    'regex': '$regex',
+    # not_regex, search, and not_search are handled as special cases
+    # search is treated as a case-insensitive, multiline regex
+    # is and not_is are the same as $eq and $ne unless the value is None
+}
 
 
 def inferFields(records):
@@ -48,28 +67,39 @@ class MongoConnector(base.DatabaseConnector):
 
         self.initialized = True
 
-    def _applyFilter(self, clauses, filt):
-        operator = filt['operator']
+    def _applyFilter(self, clauses, filter):
+        operator = filter['operator']
         operator = base.FilterOperators.get(operator)
 
-        if operator in ['eq', 'ne', 'lt', 'gte']:
-            field = filt['field']
-            value = filt['value']
-            operator = '$' + operator
-
-            clauses.append({field: {operator: value}})
+        field = filter['field']
+        if not isinstance(field, six.string_types):
+            raise DatabaseConnectorException(
+                'Filters must use a known field as the left value')
+        value = filter['value']
+        if operator in MongoOperators:
+            operator = MongoOperators[operator]
+        elif operator == 'not_regex':
+            operator = '$not'
+            value = re.compile(filter['value'])
+        elif operator in ('search', 'not_search'):
+            operator = '$regex' if operator == 'search' else '$not'
+            value = re.compile(filter['value'],
+                               re.IGNORECASE | re.MULTILINE | re.DOTALL)
+        elif operator in ('is', 'not_is'):
+            if value is None:
+                operator = '$in' if operator == 'is' else '$nin'
+                value = [None]
+            else:
+                operator = '$eq' if operator == 'is' else '$ne'
         else:
             raise DatabaseConnectorException('operator %s unimplemented' % (
                 operator))
-
+        clauses.append({field: {operator: value}})
         return clauses
 
     def connect(self):
         self.conn = MongoClient(self.databaseUrl)
-        if self.databaseName:
-            self.database = self.conn[self.databaseName]
-        else:
-            self.database = self.conn.get_default_database()
+        self.database = self.conn[self.databaseName]
         return self.database[self.collection]
 
     def disconnect(self):
@@ -87,12 +117,9 @@ class MongoConnector(base.DatabaseConnector):
         opts = {}
         for k, v in six.iteritems(queryProps):
             target = None
-            if k == 'fields':
+            if k == 'fields' and v and v != []:
                 target = 'projection'
-                if v == []:
-                    v = None
-                else:
-                    v = {field: True for field in v}
+                v = {field: True for field in v}
                 if '_id' not in v:
                     v['_id'] = False
             elif k == 'offset':
@@ -106,14 +133,15 @@ class MongoConnector(base.DatabaseConnector):
 
         if len(filterQueryClauses) > 0:
             opts['filter'] = {'$and': filterQueryClauses}
-        elif 'filter' in opts:
-            del opts['filter']
 
         result['format'] = 'dict'
         if queryProps.get('limit') == 0:
             result['data'] = []
         else:
             coll = self.connect()
+            log.info('Query: %s', bson.json_util.dumps(
+                opts, check_circular=False, separators=(',', ':'),
+                sort_keys=False, default=str, indent=None))
             cursor = coll.find(**opts)
             result['datacount'] = cursor.count(True)
             result['data'] = cursor

@@ -29,5 +29,7 @@ add_eslint_test(
 )
 
 add_python_test(assetstore PLUGIN database_assetstore BIND_SERVER EXTERNAL_DATA "plugins/database_assetstore/testdb.sql.gz")
+add_python_test(dbs_mongo PLUGIN database_assetstore BIND_SERVER EXTERNAL_DATA "plugins/database_assetstore/mongodb.permits.json.bz2")
 add_python_test(file PLUGIN database_assetstore BIND_SERVER EXTERNAL_DATA "plugins/database_assetstore/testdb.sql.gz")
+
 add_web_client_test(example "${CMAKE_CURRENT_LIST_DIR}/plugin_tests/exampleSpec.js" PLUGIN database_assetstore)
