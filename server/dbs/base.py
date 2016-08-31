@@ -301,7 +301,7 @@ class DatabaseConnector(object):
         """
         Perform a select query.  The results are passed back as a dictionary
         with the following values:
-          limit: the limit used in the query
+          limit: the limit used in the query.  Negative or None for all.
           offset: the offset used in the query
           sort: the list of sort parameters used in the query.
           fields: a list of the fields that are being returned in the order
