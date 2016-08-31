@@ -138,6 +138,8 @@ class MongoConnector(base.DatabaseConnector):
         if queryProps.get('limit') == 0:
             result['data'] = []
         else:
+            if queryProps.get('limit') < 0:
+                opts['limit'] = 0
             coll = self.connect()
             log.info('Query: %s', bson.json_util.dumps(
                 opts, check_circular=False, separators=(',', ':'),

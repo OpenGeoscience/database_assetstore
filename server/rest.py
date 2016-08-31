@@ -141,7 +141,8 @@ class DatabaseFileResource(File):
         Description('Get data from a database link.')
         .param('id', 'The ID of the file.', paramType='path')
         .param('limit', 'Result set size limit (default=50).  Use \'none\' '
-               'to return all rows (0 returns 0 rows)', required=False)
+               'or a negative value to return all rows (0 returns 0 rows)',
+               required=False)
         .param('offset', 'Offset into result set (default=0).',
                required=False, dataType='int')
         .param('sort', 'Either a field to sort the results by or a JSON list '
@@ -330,7 +331,8 @@ class DatabaseAssetstoreResource(Resource):
         .param('fields', 'The default fields to return.', required=False)
         .param('filters', 'The default fields to return.', required=False)
         .param('limit', 'The default limit of rows to return.  Use \'none\' '
-               'to return all rows (0 returns 0 rows)', required=False)
+               'or a negative value to return all rows (0 returns 0 rows)',
+               required=False)
         .param('format', 'The default format return.', required=False,
                enum=list(dbFormatList))
         .param('progress', 'Whether to record progress on this operation ('
@@ -359,13 +361,11 @@ class DatabaseAssetstoreResource(Resource):
                                     'name of a table or a JSON list.')
         else:
             tables = [tables]
-        if params.get('limit'):
+        if params.get('limit') is not None:
             try:
                 params['limit'] = int(params['limit'])
-                if params['limit'] <= 0:
-                    raise ValueError()
             except ValueError:
-                raise RestException('The limit must be a positive integer.')
+                raise RestException('The limit must be an integer or "none".')
         if '' in tables:
             tables = ['']
         tables = self._parseTableList(tables, assetstore)
@@ -389,6 +389,6 @@ class DatabaseAssetstoreResource(Resource):
                 'sort': params.get('sort'),
                 'fields': params.get('fields'),
                 'filters': params.get('filters'),
-                'limit': params.get('limit') or None,
+                'limit': params.get('limit'),
                 'format': format
                 }, ctx, user)

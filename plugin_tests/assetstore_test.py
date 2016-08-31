@@ -249,12 +249,12 @@ class AssetstoreTest(base.TestCase):
             method='PUT', user=self.admin, params=params)
         self.assertStatusOk(resp)
         # Setting a bad limit should throw an error
-        params['limit'] = -4
+        params['limit'] = 'not an int'
         resp = self.request(
             path='/database_assetstore/%s/import' % str(assetstore1['_id']),
             method='PUT', user=self.admin, params=params)
         self.assertStatus(resp, 400)
-        self.assertIn('positive integer', resp.json['message'])
+        self.assertIn('must be an integer', resp.json['message'])
         del params['limit']
 
         # Import a table from mongo
@@ -291,7 +291,7 @@ class AssetstoreTest(base.TestCase):
         with self.assertRaises(GirderException):
             adapter.importData(
                 self.publicFolder, 'folder',
-                {'tables': ['towns'], 'limit': -4},
+                {'tables': ['towns'], 'limit': 'not an int'},
                 progress.noProgress, self.admin)
         # Change the file we made for towns to remove the marker that it was
         # imported to prvent import from updating it.

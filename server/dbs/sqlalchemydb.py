@@ -373,7 +373,8 @@ class SQLAlchemyConnector(base.DatabaseConnector):
                     sortCol = sortCol.desc()
                 sortList.append(sortCol)
             query = query.order_by(*sortList)
-        if 'limit' in queryProps:
+        if (queryProps.get('limit') is not None and
+                int(queryProps['limit']) >= 0):
             query = query.limit(int(queryProps['limit']))
         if 'offset' in queryProps:
             query = query.offset(int(queryProps['offset']))
