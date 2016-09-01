@@ -329,12 +329,11 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
                     'because it wasn\'t imported.' % name)
             # Validate the limit parameter
             try:
-                if (params.get('limit') not in (None, '') and
-                        int(params.get('limit')) <= 0):
-                    raise ValueError()
+                if params.get('limit') not in (None, ''):
+                    params['limit'] = int(params['limit'])
             except ValueError:
                 raise GirderException(
-                    'limit must be empty or a positive integer')
+                    'limit must be empty or an integer')
             # Set or replace the database parameters for the file
             dbinfo['imported'] = True
             for key in ('sort', 'fields', 'filters', 'format', 'limit'):
