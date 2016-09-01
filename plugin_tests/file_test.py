@@ -829,6 +829,32 @@ class FileTest(base.TestCase):
         self.assertEqual(set(json.loads(data.split('\n')[0]).keys()),
                          set(['town', 'pop2010', 'shape_len', 'type']))
         self.assertEqual(json.loads(data.split('\n')[0])['town'], 'ABINGTON')
+        # GeoJSON format
+        params['format'] = 'GeoJSON'
+        geojsonfield = {'func': 'ST_AsGeoJSON', 'param': [{
+            'func': 'st_transform', 'param': [{'field': 'geom'}, 4326]
+        }]}
+        params['fields'] = json.dumps([geojsonfield])
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        geojson = resp.json
+        self.assertTrue(isinstance(geojson, dict))
+        self.assertEqual(geojson['type'], 'GeometryCollection')
+        self.assertEqual(len(geojson['geometries']), 5)
+        self.assertEqual(geojson['geometries'][0]['type'], 'MultiPolygon')
+        self.assertIn('coordinates', geojson['geometries'][0])
+        # We should discard the non-geojson fields
+        params['fields'] = json.dumps(['town', geojsonfield, 'pop2010'])
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(resp.json, geojson)
+        params['fields'] = 'town,pop2010,shape_len,type'
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['geometries']), 0)
 
     def testFileDatabaseSelectClient(self):
         fileId, fileId2, fileId3 = self._setupDbFiles()
