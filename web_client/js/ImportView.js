@@ -6,7 +6,7 @@ girder.views.dbas_assetstore_ImportView = girder.View.extend({
             this.$('.g-submit-dbas-import').addClass('disabled');
 
             var parentType = this.$('#g-dbas-import-dest-type').val(),
-                parentId = this.$('#g-dbas-import-dest-id').val(),
+                parentId = this.$('#g-dbas-import-dest-id').val().trim(),
                 tableValue = this.$('#g-dbas-table-name').val() || [],
                 tables = [], entry, value, i;
             for (i = 0; i < tableValue.length; i += 1) {
@@ -39,10 +39,28 @@ girder.views.dbas_assetstore_ImportView = girder.View.extend({
                 parentId: parentId,
                 progress: true
             });
-        }
+        },
+        'click .g-open-browser': '_openBrowser'
     },
 
     initialize: function () {
+        this._browserWidgetView = new girder.views.BrowserWidget({
+            parentView: this,
+            titleText: 'Destination',
+            helpText: 'Browse to a location to select it as the destination.',
+            submitText: 'Select Destination',
+            validate: function (id) {
+                if (!id) {
+                    return 'Please select a valid root.';
+                }
+            }
+        });
+        this.listenTo(this._browserWidgetView, 'g:saved', function (val) {
+            this.$('#g-dbas-import-dest-id').val(val);
+            var model = this._browserWidgetView._hierarchyView.parentModel;
+            this.$('#g-dbas-import-dest-type').val(model.get('_modelType'));
+        });
+
         this.model
             .off('g:error').once('g:error', function (err) {
                 girder.events.trigger('g:alert', {
@@ -65,6 +83,10 @@ girder.views.dbas_assetstore_ImportView = girder.View.extend({
             assetstore: this.model,
             tableList: this.tableList
         }));
+    },
+
+    _openBrowser: function () {
+        this._browserWidgetView.setElement($('#g-dialog-container')).render();
     }
 });
 
