@@ -96,8 +96,8 @@ class AssetstoreTest(base.TestCase):
     def testAssetstoreCreate(self):
         # Make sure admin access required
         resp = self.request(path='/assetstore', method='POST',
-                            params=self.dbParams)
-        self.assertStatus(resp, 401)
+                            params=self.dbParams, user=self.user)
+        self.assertStatus(resp, 403)
         # Test validation
         altparams = self.dbParams.copy()
         altparams.pop('dburi')
@@ -367,8 +367,8 @@ class AssetstoreTest(base.TestCase):
             path='/database_assetstore/%s/import' % str(assetstore1['_id']),
             method='PUT', user=self.admin, params=params)
         self.assertStatusOk(resp)
-        townItem = list(self.model('item').textSearch('towns', user=self.admin,
-                                                      limit=1))[0]
+        townItem = list(self.model('item').textSearch(
+            'towns', user=self.admin, limit=1))[0]
         resp = self.request(path='/item/%s/download' % str(townItem['_id']))
         self.assertStatusOk(resp)
         data = resp.json
@@ -547,22 +547,22 @@ class AssetstoreTest(base.TestCase):
     def testInvalidParameters(self):
         # Test conditions that should return None
         from girder.plugins.database_assetstore import assetstore
-        from girder.plugins.database_assetstore.assetstore import dbInfoKey
+        from girder.plugins.database_assetstore.assetstore import DB_INFO_KEY
         self.assertIsNone(assetstore.getDbInfoForFile({}))
         self.assertIsNone(assetstore.getDbInfoForFile(
-            {dbInfoKey: {}, 'assetstoreId': 'unknown'}, {'type': 'unknown'}))
+            {DB_INFO_KEY: {}, 'assetstoreId': 'unknown'}, {'type': 'unknown'}))
         self.assertEqual(assetstore.getQueryParamsForFile({}), {})
         self.assertEqual(assetstore.getQueryParamsForFile(
-            {dbInfoKey: {'a': 'b'}}), {})
+            {DB_INFO_KEY: {'a': 'b'}}), {})
         self.assertEqual(assetstore.getQueryParamsForFile(
-            {dbInfoKey: {'sort': 'b'}}), {'sort': 'b'})
+            {DB_INFO_KEY: {'sort': 'b'}}), {'sort': 'b'})
         # Test with non-database assetstore
         resp = self.request(path='/assetstore', method='GET', user=self.admin)
         self.assertStatusOk(resp)
         self.assertEqual(1, len(resp.json))
         assetstore1 = resp.json[0]
         self.assertIsNone(assetstore.validateFile(
-            {dbInfoKey: {}, 'assetstoreId': str(assetstore1['_id'])}))
+            {DB_INFO_KEY: {}, 'assetstoreId': str(assetstore1['_id'])}))
         # Test database validation
         resp = self.request(path='/assetstore', method='POST', user=self.admin,
                             params=self.dbParams2)
@@ -571,7 +571,7 @@ class AssetstoreTest(base.TestCase):
         with six.assertRaisesRegex(self, Exception,
                                    'must have a non-blank database'):
             self.assertIsNone(assetstore.validateFile({
-                dbInfoKey: {'table': 'sample'},
+                DB_INFO_KEY: {'table': 'sample'},
                 'assetstoreId': str(assetstore1['_id'])}))
 
     def testDisablingPluginWithActiveFiles(self):

@@ -31,7 +31,7 @@ from girder.utility import assetstore_utilities
 from girder.utility.progress import ProgressContext
 
 from . import assetstore, dbs
-from .assetstore import dbInfoKey
+from .assetstore import DB_INFO_KEY
 from .query import DatabaseQueryException, dbFormatList, queryDatabase, \
     preferredFormat
 
@@ -65,9 +65,9 @@ class DatabaseFileResource(File):
     def getDatabaseLink(self, file, params):
         if self.model('file').hasAccess(file, self.getCurrentUser(),
                                         AccessType.WRITE):
-            return file.get(dbInfoKey)
+            return file.get(DB_INFO_KEY)
         else:
-            return file.get(dbInfoKey) is not None
+            return file.get(DB_INFO_KEY) is not None
 
     @describeRoute(
         Description('Set or modify file database link information.')
@@ -86,14 +86,14 @@ class DatabaseFileResource(File):
     def createDatabaseLink(self, file, params):
         dbs.clearDBConnectorCache(file['_id'])
         dbinfo = self.getBodyJson()
-        if dbInfoKey not in file:
-            file[dbInfoKey] = {}
-        file[dbInfoKey].update(six.viewitems(dbinfo))
-        toDelete = [k for k, v in six.viewitems(file[dbInfoKey]) if v is None]
+        if DB_INFO_KEY not in file:
+            file[DB_INFO_KEY] = {}
+        file[DB_INFO_KEY].update(six.viewitems(dbinfo))
+        toDelete = [k for k, v in six.viewitems(file[DB_INFO_KEY]) if v is None]
         for key in toDelete:
-            del file[dbInfoKey][key]
+            del file[DB_INFO_KEY][key]
         file['updated'] = datetime.datetime.utcnow()
-        dbinfo = file[dbInfoKey]
+        dbinfo = file[DB_INFO_KEY]
         return self.model('file').save(file)
 
     @describeRoute(
