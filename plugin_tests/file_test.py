@@ -865,6 +865,13 @@ class FileTest(base.TestCase):
         # whiched used a random number as part of the query to prevent
         # caching of the results.  This would occasionally fully process
         # instead of getting canceled.
+
+        # Whitelist pg_sleep for this test
+        from girder.plugins.database_assetstore import dbs, assetstore
+        connector = dbs.getDBConnector(fileId, assetstore.getDbInfoForFile(
+            self.file1))
+        connector._allowedFunctions['pg_sleep'] = True
+
         slowParams = params.copy()
         slowParams['fields'] = json.dumps([
             'town',
