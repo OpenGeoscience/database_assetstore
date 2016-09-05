@@ -1,5 +1,5 @@
 {
-    "name": "Database Assetstore",
+    "name": "Database assetstore",
     "description": "Provide database access via assetstores.",
     "version": "0.1.0",
     "dependencies": [],

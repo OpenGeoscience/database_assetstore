@@ -87,16 +87,16 @@ class FileTest(base.TestCase):
         self.assertStatusOk(resp)
         self.assetstore2 = resp.json
 
-        from girder.plugins.database_assetstore.assetstore import dbInfoKey
+        from girder.plugins.database_assetstore.assetstore import DB_INFO_KEY
         self.file1 = self.model('file').createFile(
             name='file1', creator=self.admin, item=self.item1, size=0,
             assetstore=self.assetstore1, saveFile=False)
-        self.file1[dbInfoKey] = {'table': 'towns'}
+        self.file1[DB_INFO_KEY] = {'table': 'towns'}
         self.model('file').save(self.file1)
         self.file2 = self.model('file').createFile(
             name='file2', creator=self.admin, item=self.item2, size=0,
             assetstore=self.assetstore2, saveFile=False)
-        self.file2[dbInfoKey] = {'table': 'towns'}
+        self.file2[DB_INFO_KEY] = {'table': 'towns'}
         self.model('file').save(self.file2)
 
         self.file3 = self.model('file').createFile(
@@ -891,6 +891,13 @@ class FileTest(base.TestCase):
         # whiched used a random number as part of the query to prevent
         # caching of the results.  This would occasionally fully process
         # instead of getting canceled.
+
+        # Whitelist pg_sleep for this test
+        from girder.plugins.database_assetstore import dbs, assetstore
+        connector = dbs.getDBConnector(fileId, assetstore.getDbInfoForFile(
+            self.file1))
+        connector._allowedFunctions['pg_sleep'] = True
+
         slowParams = params.copy()
         slowParams['fields'] = json.dumps([
             'town',

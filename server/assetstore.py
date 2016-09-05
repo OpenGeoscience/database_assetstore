@@ -32,7 +32,7 @@ from .dbs import getDBConnectorClassFromDialect, databaseFromUri, \
 from .query import dbFormatList, queryDatabase, preferredFormat
 
 
-dbInfoKey = 'databaseMetadata'
+DB_INFO_KEY = 'databaseMetadata'
 
 
 class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
@@ -76,7 +76,7 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
         raise NotImplementedError('Database assetstores are read only.')
 
     def deleteFile(self, file):
-        if file.get(dbInfoKey, {}).get('imported'):
+        if file.get(DB_INFO_KEY, {}).get('imported'):
             return
         raise NotImplementedError('Database assetstores are read only.')
 
@@ -323,7 +323,7 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
                     mimeType=dbFormatList.get(preferredFormat(params.get(
                         'format'))),
                     saveFile=False)
-            if file.get(dbInfoKey) and not file[dbInfoKey].get('imported'):
+            if file.get(DB_INFO_KEY) and not file[DB_INFO_KEY].get('imported'):
                 raise GirderException(
                     'A file for table %s is present but cannot be updated '
                     'because it wasn\'t imported.' % name)
@@ -338,7 +338,7 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
             dbinfo['imported'] = True
             for key in ('sort', 'fields', 'filters', 'format', 'limit'):
                 dbinfo[key] = params.get(key)
-            file[dbInfoKey] = dbinfo
+            file[DB_INFO_KEY] = dbinfo
             # Validate that we can perform queries by trying to download 1
             # record from the file.
             #   This intentionally encodes extraParameters as JSON.  It could
@@ -349,7 +349,8 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
                 file.copy(), headers=False, extraParameters=json.dumps({
                     'limit': 1}))
             # Test the download without keeping it
-            [None for chunk in downloadFunc()]
+            for chunk in downloadFunc():
+                pass
             # Now save the new file
             fileModel.save(file)
 
@@ -365,7 +366,7 @@ def getDbInfoForFile(file, assetstore=None):
     :return: the dbinfo dictionary or None if the file is not in a database
              assetstore.
     """
-    if dbInfoKey not in file or 'assetstoreId' not in file:
+    if DB_INFO_KEY not in file or 'assetstoreId' not in file:
         return None
     if assetstore is None:
         assetstore = ModelImporter.model('assetstore').load(
@@ -375,13 +376,13 @@ def getDbInfoForFile(file, assetstore=None):
     dbinfo = {
         'type': assetstore['database']['dbtype'],
         'url': assetstore['database']['uri'],
-        'table': file[dbInfoKey]['table'],
-        'collection': file[dbInfoKey]['table']
+        'table': file[DB_INFO_KEY]['table'],
+        'collection': file[DB_INFO_KEY]['table']
 
     }
     for key in ('database', 'schema'):
-        if key in file[dbInfoKey]:
-            dbinfo[key] = file[dbInfoKey][key]
+        if key in file[DB_INFO_KEY]:
+            dbinfo[key] = file[DB_INFO_KEY][key]
     return dbinfo
 
 
@@ -395,13 +396,13 @@ def getQueryParamsForFile(file, setBlanks=False):
     :return: the default query parameters.
     """
     params = {}
-    if dbInfoKey not in file:
+    if DB_INFO_KEY not in file:
         return params
     if setBlanks:
         params['offset'] = 0
     for key in ('sort', 'fields', 'filters', 'format', 'limit'):
-        if key in file[dbInfoKey] or setBlanks:
-            params[key] = file[dbInfoKey].get(key)
+        if key in file[DB_INFO_KEY] or setBlanks:
+            params[key] = file[DB_INFO_KEY].get(key)
     if str(params.get('limit')).isdigit():
         params['limit'] = int(params['limit'])
     return params
@@ -409,26 +410,26 @@ def getQueryParamsForFile(file, setBlanks=False):
 
 def validateFile(file):
     """
-    If a file document contains the dbInfoKey, check if it is in a database
-    assetstore.  If so, check that the data in dbInfoKey is valid.  Note
-    that this won't check files without the dbInfoKey, even if they are in
+    If a file document contains the DB_INFO_KEY, check if it is in a database
+    assetstore.  If so, check that the data in DB_INFO_KEY is valid.  Note
+    that this won't check files without the DB_INFO_KEY, even if they are in
     the database assetstore to allow files to be created and then have
     database information added to them.
 
     :param file: the file document.
     """
-    if dbInfoKey not in file or 'assetstoreId' not in file:
+    if DB_INFO_KEY not in file or 'assetstoreId' not in file:
         return None
     assetstore = ModelImporter.model('assetstore').load(
         file['assetstoreId'])
     if assetstore.get('type') != AssetstoreType.DATABASE:
         return None
-    if not file[dbInfoKey].get('table'):
+    if not file[DB_INFO_KEY].get('table'):
         raise ValidationException(
             'File database information entry must have a non-blank table '
             'value.')
     if (not databaseFromUri(assetstore['database']['uri']) and
-            not file[dbInfoKey].get('database')):
+            not file[DB_INFO_KEY].get('database')):
         raise ValidationException(
             'File database information must have a non-blank database value '
             'on an assetstore that doesn\'t specify a single database.')

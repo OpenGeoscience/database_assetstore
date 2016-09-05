@@ -23,217 +23,218 @@ import json
 import six
 
 from girder.api import access
-from girder.api.v1.file import File
 from girder.api.describe import describeRoute, Description
-from girder.api.rest import filtermodel, loadmodel, Resource, RestException
+from girder.api.rest import filtermodel, loadmodel, Resource, RestException, \
+    boundHandler
 from girder.models.model_base import AccessType
 from girder.utility import assetstore_utilities
 from girder.utility.progress import ProgressContext
 
 from . import assetstore, dbs
-from .assetstore import dbInfoKey
+from .assetstore import DB_INFO_KEY
 from .query import DatabaseQueryException, dbFormatList, queryDatabase, \
     preferredFormat
 
 
-class DatabaseFileResource(File):
+@describeRoute(
+    Description('Get file database link information.')
+    .param('id', 'The ID of the file.', paramType='path')
+    .errorResponse('ID was invalid.')
+    .errorResponse('Read access was denied for the file.', 403)
+)
+@boundHandler()
+@access.user
+@loadmodel(model='file', map={'id': 'file'}, level=AccessType.READ)
+def getDatabaseLink(self, file, params):
+    if self.model('file').hasAccess(file, self.getCurrentUser(),
+                                    AccessType.WRITE):
+        return file.get(DB_INFO_KEY)
+    else:
+        return file.get(DB_INFO_KEY) is not None
 
-    def __init__(self, apiRoot):
-        # Don't call the parent (File) constructor, to avoid redefining routes,
-        # but do call the grandparent (Resource) constructor
-        super(File, self).__init__()
 
-        self.resourceName = 'file'
-        apiRoot.file.route('GET', (':id', 'database'), self.getDatabaseLink)
-        apiRoot.file.route('POST', (':id', 'database'),
-                           self.createDatabaseLink)
-        apiRoot.file.route('GET', (':id', 'database', 'fields'),
-                           self.getDatabaseFields)
-        apiRoot.file.route('PUT', (':id', 'database', 'refresh'),
-                           self.databaseRefresh)
-        apiRoot.file.route('GET', (':id', 'database', 'select'),
-                           self.databaseSelect)
+@describeRoute(
+    Description('Set or modify file database link information.')
+    .param('id', 'The ID of the file.', paramType='path')
+    .param('body', 'A JSON object containing the database information to '
+           'update.  At a minimum this must include "table" or '
+           '"collection".', paramType='body')
+    .notes('Set database information fields to null to delete them.')
+    .errorResponse('ID was invalid.')
+    .errorResponse('Invalid JSON passed in request body.')
+    .errorResponse('Write access was denied for the file.', 403)
+)
+@boundHandler()
+@access.user
+@loadmodel(model='file', map={'id': 'file'}, level=AccessType.ADMIN)
+@filtermodel(model='file')
+def createDatabaseLink(self, file, params):
+    dbs.clearDBConnectorCache(file['_id'])
+    dbinfo = self.getBodyJson()
+    if DB_INFO_KEY not in file:
+        file[DB_INFO_KEY] = {}
+    file[DB_INFO_KEY].update(six.viewitems(dbinfo))
+    toDelete = [k for k, v in six.viewitems(file[DB_INFO_KEY]) if v is None]
+    for key in toDelete:
+        del file[DB_INFO_KEY][key]
+    file['updated'] = datetime.datetime.utcnow()
+    dbinfo = file[DB_INFO_KEY]
+    return self.model('file').save(file)
 
-    @describeRoute(
-        Description('Get file database link information.')
-        .param('id', 'The ID of the file.', paramType='path')
-        .errorResponse('ID was invalid.')
-        .errorResponse('Read access was denied for the file.', 403)
-    )
-    @access.user
-    @loadmodel(model='file', map={'id': 'file'}, level=AccessType.READ)
-    def getDatabaseLink(self, file, params):
-        if self.model('file').hasAccess(file, self.getCurrentUser(),
-                                        AccessType.WRITE):
-            return file.get(dbInfoKey)
-        else:
-            return file.get(dbInfoKey) is not None
 
-    @describeRoute(
-        Description('Set or modify file database link information.')
-        .param('id', 'The ID of the file.', paramType='path')
-        .param('body', 'A JSON object containing the database information to '
-               'update. At a minimum this must include "table" or '
-               '"collection".', paramType='body')
-        .notes('Set database information fields to null to delete them.')
-        .errorResponse('ID was invalid.')
-        .errorResponse('Invalid JSON passed in request body.')
-        .errorResponse('Write access was denied for the file.', 403)
-    )
-    @access.user
-    @loadmodel(model='file', map={'id': 'file'}, level=AccessType.ADMIN)
-    @filtermodel(model='file')
-    def createDatabaseLink(self, file, params):
-        dbs.clearDBConnectorCache(file['_id'])
-        dbinfo = self.getBodyJson()
-        if dbInfoKey not in file:
-            file[dbInfoKey] = {}
-        file[dbInfoKey].update(six.viewitems(dbinfo))
-        toDelete = [k for k, v in six.viewitems(file[dbInfoKey]) if v is None]
-        for key in toDelete:
-            del file[dbInfoKey][key]
-        file['updated'] = datetime.datetime.utcnow()
-        dbinfo = file[dbInfoKey]
-        return self.model('file').save(file)
+@describeRoute(
+    Description('Get information on the fields available for an file database '
+                'link.')
+    .param('id', 'The ID of the file.', paramType='path')
+    .errorResponse('ID was invalid.')
+    .errorResponse('Read access was denied for the file.', 403)
+    .errorResponse('File is not a database link.')
+    .errorResponse('Failed to connect to database.')
+)
+@boundHandler()
+@access.cookie
+@access.public
+@loadmodel(model='file', map={'id': 'file'}, level=AccessType.READ)
+def getDatabaseFields(self, file, params):
+    dbinfo = assetstore.getDbInfoForFile(file)
+    if not dbinfo:
+        raise RestException('File is not a database link.')
+    conn = dbs.getDBConnector(file['_id'], dbinfo)
+    fields = conn.getFieldInfo()
+    return fields
 
-    @describeRoute(
-        Description('Get information on the fields available for an file '
-                    'database link.')
-        .param('id', 'The ID of the file.', paramType='path')
-        .errorResponse('ID was invalid.')
-        .errorResponse('Read access was denied for the file.', 403)
-        .errorResponse('File is not a database link.')
-        .errorResponse('Failed to connect to database.')
-    )
-    @access.cookie
-    @access.public
-    @loadmodel(model='file', map={'id': 'file'}, level=AccessType.READ)
-    def getDatabaseFields(self, file, params):
-        dbinfo = assetstore.getDbInfoForFile(file)
-        if not dbinfo:
-            raise RestException('File is not a database link.')
-        conn = dbs.getDBConnector(file['_id'], dbinfo)
-        fields = conn.getFieldInfo()
-        return fields
 
-    @describeRoute(
-        Description('Refresh data associated with an file database link.')
-        .param('id', 'The ID of the file.', paramType='path')
-        .notes('This may be necessary if fields (columns) within the linked '
-               'table are added, dropped, or changed, or if the available '
-               'database functions are altered.')
-        .errorResponse('ID was invalid.')
-        .errorResponse('Read access was denied for the file.', 403)
-        .errorResponse('File is not a database link.')
-    )
-    @access.public
-    @loadmodel(model='file', map={'id': 'file'}, level=AccessType.READ)
-    def databaseRefresh(self, file, params):
-        dbinfo = assetstore.getDbInfoForFile(file)
-        if not dbinfo:
-            raise RestException('File is not a database link.')
-        result = dbs.clearDBConnectorCache(file['_id'])
-        return {
-            'refreshed': result
-        }
+@describeRoute(
+    Description('Refresh data associated with an file database link.')
+    .param('id', 'The ID of the file.', paramType='path')
+    .notes('This may be necessary if fields (columns) within the linked table '
+           'are added, dropped, or changed, or if the available database '
+           'functions are altered.')
+    .errorResponse('ID was invalid.')
+    .errorResponse('Read access was denied for the file.', 403)
+    .errorResponse('File is not a database link.')
+)
+@boundHandler()
+@access.public
+@loadmodel(model='file', map={'id': 'file'}, level=AccessType.READ)
+def databaseRefresh(self, file, params):
+    dbinfo = assetstore.getDbInfoForFile(file)
+    if not dbinfo:
+        raise RestException('File is not a database link.')
+    result = dbs.clearDBConnectorCache(file['_id'])
+    return {
+        'refreshed': result
+    }
 
-    @describeRoute(
-        Description('Get data from a database link.')
-        .param('id', 'The ID of the file.', paramType='path')
-        .param('limit', 'Result set size limit (default=50).  Use \'none\' '
-               'or a negative value to return all rows (0 returns 0 rows)',
-               required=False)
-        .param('offset', 'Offset into result set (default=0).',
-               required=False, dataType='int')
-        .param('sort', 'Either a field to sort the results by or a JSON list '
-               'of multiple fields and directions for sorting the results '
-               '(e.g., [["field1", 1], ["field2", -1]])', required=False)
-        .param('sortdir', '1 for ascending, -1 for descending (default=1).  '
-               'Ignored if sort is unspecified or is a JSON list.',
-               required=False, dataType='int')
-        .param('fields', 'A comma-separated or JSON list of fields (column '
-               'names) to return (default is all fields).  If a JSON list is '
-               'used, instead of a plain string, a field may be a dictionary '
-               'with a function definition and an optional "reference" entry '
-               'which is used to identify the resultant column.',
-               required=False)
-        .param('filters', 'A JSON list of filters to apply to the data.  Each '
-               'entry in the list can be either a list or a dictionary.  If a '
-               'list, it contains [(field), (operator), (value)], where '
-               '(operator) is optional.  If a dictionary, at least the '
-               '"field" and "value" keys must contain values, and "operator" '
-               'and "function" keys can also be added.', required=False)
-        .param('format', 'The format to return the data (default=list).',
-               required=False, enum=list(dbFormatList))
-        .param('pretty', 'If true, add whitespace to JSON outputs '
-               '(default=false).', required=False, dataType='boolean')
-        .param('clientid', 'A string to use for a client id.  If specified '
-               'and there is an extant query to this end point from the same '
-               'clientid, the extant query will be cancelled.', required=False)
-        .param('wait', 'Maximum duration in seconds to wait for data '
-               '(default=0).  If a positive value is specified and the '
-               'initial query returns no results, the query will be repeated '
-               'every (poll) seconds until this time elapses or there are '
-               'some results.', required=False, dataType='float', default=0)
-        .param('poll', 'Minimum interval in seconds between checking for data '
-               'when waiting (default=10).', required=False, dataType='float',
-               default=10)
-        .param('initwait', 'When waiting, initial delay in seconds before '
-               'starting to poll for more data.  This is not counted as part '
-               'of the wait duration (default=0).', required=False,
-               dataType='float', default=0)
-        .notes('Instead of or in addition to specifying a filters parameter, '
-               'additional query parameters of the form (field)[_(operator)]='
-               '(value) can be used.  '
-               'Operators depend on the data type of the field, and include = '
-               '(no operator or eq), != (<>, ne), >= (min, gte), <= (lte), > '
-               '(gt), < (max, lt), in, notin, ~ (regex), ~* (search -- '
-               'typically a case insensitive regex or word-stem search), !~ '
-               '(notregex), !~* (notsearch).  '
-               'If the backing database connector supports it, any place a '
-               'field can be used can be replaced with a function reference.  '
-               'This is a dictionary with "func" or with the name of the '
-               'database function and "params" which is a list of values, '
-               'fields, or functions to pass to the function.  If the param '
-               'entry is not a dictionary, it is treated as a value.  If a '
-               'dictionary, it can contain "value", "field", or "func" and '
-               '"param".')
-        .errorResponse('ID was invalid.')
-        .errorResponse('Read access was denied for the file.', 403)
-        .errorResponse('File is not a database link.')
-        .errorResponse('Failed to connect to database.')
-        .errorResponse('The sort parameter must be a JSON list or a known '
-                       'field name.')
-        .errorResponse('Sort must use known fields.')
-        .errorResponse('The fields parameter must be a JSON list or a '
-                       'comma-separated list of known field names.')
-        .errorResponse('Fields must use known fields.')
-        .errorResponse('The filters parameter must be a JSON list.')
-        .errorResponse('Filters in list-format must have two or three '
-                       'components.')
-        .errorResponse('Unknown filter operator')
-        .errorResponse('Filters must be on known fields.')
-        .errorResponse('Cannot use operator on field')
-    )
-    @access.cookie
-    @access.public
-    @loadmodel(model='file', map={'id': 'file'}, level=AccessType.READ)
-    def databaseSelect(self, file, params):
-        dbinfo = assetstore.getDbInfoForFile(file)
-        if not dbinfo:
-            raise RestException('File is not a database link.')
-        queryparams = assetstore.getQueryParamsForFile(file)
-        queryparams.update(params)
-        try:
-            resultFunc, mimeType = queryDatabase(
-                file['_id'], dbinfo, queryparams)
-        except DatabaseQueryException as exc:
-            raise RestException(exc.message)
-        if resultFunc is None:
-            cherrypy.response.status = 500
-            return
-        cherrypy.response.headers['Content-Type'] = mimeType
-        return resultFunc
+
+@describeRoute(
+    Description('Get data from a database link.')
+    .param('id', 'The ID of the file.', paramType='path')
+    .param('limit', 'Result set size limit (default=50).  Use \'none\' or a '
+           'negative value to return all rows (0 returns 0 rows)',
+           required=False)
+    .param('offset', 'Offset into result set (default=0).', required=False,
+           dataType='int')
+    .param('sort', 'Either a field to sort the results by or a JSON list of '
+           'multiple fields and directions for sorting the results (e.g., '
+           '[["field1", 1], ["field2", -1]])', required=False)
+    .param('sortdir', '1 for ascending, -1 for descending (default=1).  '
+           'Ignored if sort is unspecified or is a JSON list.', required=False,
+           dataType='int')
+    .param('fields', 'A comma-separated or JSON list of fields (column names) '
+           'to return (default is all fields).  If a JSON list is used, '
+           'instead of a plain string, a field may be a dictionary with a '
+           'function definition and an optional "reference" entry which is '
+           'used to identify the resultant column.', required=False)
+    .param('filters', 'A JSON list of filters to apply to the data.  Each '
+           'entry in the list can be either a list or a dictionary.  If a '
+           'list, it contains [(field), (operator), (value)], where '
+           '(operator) is optional.  If a dictionary, at least the "field" '
+           'and "value" keys must contain values, and "operator" and '
+           '"function" keys can also be added.', required=False)
+    .param('format', 'The format to return the data (default=list).',
+           required=False, enum=list(dbFormatList))
+    .param('pretty', 'If true, add whitespace to JSON outputs '
+           '(default=false).', required=False, dataType='boolean')
+    .param('clientid', 'A string to use for a client id.  If specified and '
+           'there is an extant query to this end point from the same '
+           'clientid, the extant query will be cancelled.', required=False)
+    .param('wait', 'Maximum duration in seconds to wait for data '
+           '(default=0).  If a positive value is specified and the initial '
+           'query returns no results, the query will be repeated every (poll) '
+           'seconds until this time elapses or there are some results.',
+           required=False, dataType='float', default=0)
+    .param('poll', 'Minimum interval in seconds between checking for data '
+           'when waiting (default=10).', required=False, dataType='float',
+           default=10)
+    .param('initwait', 'When waiting, initial delay in seconds before '
+           'starting to poll for more data.  This is not counted as part of '
+           'the wait duration (default=0).', required=False, dataType='float',
+           default=0)
+    .notes('Instead of or in addition to specifying a filters parameter, '
+           'additional query parameters of the form (field)[_(operator)]='
+           '(value) can be used.  '
+           'Operators depend on the data type of the field, and include = (no '
+           'operator or eq), != (<>, ne), >= (min, gte), <= (lte), > (gt), < '
+           '(max, lt), in, notin, ~ (regex), ~* (search -- typically a case '
+           'insensitive regex or word-stem search), !~ (notregex), !~* '
+           '(notsearch).  '
+           'If the backing database connector supports it, any place a field '
+           'can be used can be replaced with a function reference.  This is a '
+           'dictionary with "func" or with the name of the database function '
+           'and "params" which is a list of values, fields, or functions to '
+           'pass to the function.  If the param entry is not a dictionary, it '
+           'is treated as a value.  If a dictionary, it can contain "value", '
+           '"field", or "func" and "param".')
+    .errorResponse('ID was invalid.')
+    .errorResponse('Read access was denied for the file.', 403)
+    .errorResponse('File is not a database link.')
+    .errorResponse('Failed to connect to database.')
+    .errorResponse('The sort parameter must be a JSON list or a known field '
+                   'name.')
+    .errorResponse('Sort must use known fields.')
+    .errorResponse('The fields parameter must be a JSON list or a '
+                   'comma-separated list of known field names.')
+    .errorResponse('Fields must use known fields.')
+    .errorResponse('The filters parameter must be a JSON list.')
+    .errorResponse('Filters in list-format must have two or three components.')
+    .errorResponse('Unknown filter operator')
+    .errorResponse('Filters must be on known fields.')
+    .errorResponse('Cannot use operator on field')
+)
+@boundHandler()
+@access.cookie
+@access.public
+@loadmodel(model='file', map={'id': 'file'}, level=AccessType.READ)
+def databaseSelect(self, file, params):
+    dbinfo = assetstore.getDbInfoForFile(file)
+    if not dbinfo:
+        raise RestException('File is not a database link.')
+    queryparams = assetstore.getQueryParamsForFile(file)
+    queryparams.update(params)
+    try:
+        resultFunc, mimeType = queryDatabase(
+            file['_id'], dbinfo, queryparams)
+    except DatabaseQueryException as exc:
+        raise RestException(exc.message)
+    if resultFunc is None:
+        cherrypy.response.status = 500
+        return
+    cherrypy.response.headers['Content-Type'] = mimeType
+    return resultFunc
+
+
+def fileResourceRoutes(file):
+    """
+    Add routes to the file resource.
+
+    :param file: the file resource.
+    """
+    file.route('GET', (':id', 'database'), getDatabaseLink)
+    file.route('POST', (':id', 'database'), createDatabaseLink)
+    file.route('GET', (':id', 'database', 'fields'), getDatabaseFields)
+    file.route('PUT', (':id', 'database', 'refresh'), databaseRefresh)
+    file.route('GET', (':id', 'database', 'select'), databaseSelect)
 
 
 class DatabaseAssetstoreResource(Resource):

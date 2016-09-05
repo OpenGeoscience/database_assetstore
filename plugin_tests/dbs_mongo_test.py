@@ -20,8 +20,6 @@
 import json
 import os
 import six
-import threading
-import time
 
 from girder import config
 from tests import base
@@ -247,71 +245,3 @@ class DbsMongoTest(base.TestCase):
             self.dbFileId, ), user=self.admin, params=params)
         self.assertStatusOk(resp)
         self.assertNotEqual(resp.json['data'][0][2], None)
-
-    def XtestMongoDatabaseSelectClient(self):
-        params = {'sort': 'town', 'limit': 1, 'clientid': 'test'}
-        resp = self.request(path='/file/%s/database/select' % (
-            self.dbFileId, ), user=self.admin, params=params)
-        self.assertStatusOk(resp)
-        from girder.plugins.database_assetstore import dbs
-        sessions = dbs.base._connectorCache[self.dbFileId].sessions
-        # We should be tracking the a session for 'test'
-        self.assertIn('test', sessions)
-        self.assertFalse(sessions['test']['used'])
-        last = sessions['test'].copy()
-        # A new request should update the last used time
-        resp = self.request(path='/file/%s/database/select' % (
-            self.dbFileId, ), user=self.admin, params=params)
-        self.assertStatusOk(resp)
-        self.assertGreater(sessions['test']['last'], last['last'])
-        self.assertEqual(sessions['test']['session'], last['session'])
-        # Artifically age the last session and test that we get a new session
-        last = sessions['test'].copy()
-        sessions['test']['last'] -= 305  # 300 is the default expiry age
-        resp = self.request(path='/file/%s/database/select' % (
-            self.dbFileId, ), user=self.admin, params=params)
-        self.assertStatusOk(resp)
-        self.assertNotEqual(sessions['test']['session'], last['session'])
-        # Send a slow query in a thread.  Use pg_sleep, as it produces more
-        # consistent tests.  Before, we were using
-        #   {'func': 'st_hausdorffdistance', 'param': [
-        #       {'func': 'st_minimumboundingcircle', 'param': {
-        #           'field': 'geom'}},
-        #       {'field': 'geom'},
-        #       0.03 + 0.01 * random.random()]},
-        # whiched used a random number as part of the query to prevent
-        # caching of the results.  This would occasionally fully process
-        # instead of getting canceled.
-        slowParams = params.copy()
-        slowParams['fields'] = json.dumps([
-            'town',
-            {'func': 'pg_sleep', 'param': [40]},
-        ])
-        slowParams['limit'] = 500
-        slowResults = {}
-
-        def slowQuery(params):
-            try:
-                self.request(path='/file/%s/database/select' % (
-                    self.dbFileId, ), user=self.admin, params=slowParams)
-            except Exception as exc:
-                slowResults['exc'] = repr(exc)
-
-        slow = threading.Thread(target=slowQuery, kwargs={
-            'params': params
-        })
-        slow.start()
-        # Wait for the query to start
-        while not sessions['test']['used'] and slow.is_alive():
-            time.sleep(0.05)
-        # Sending a normal request should cancel the slow one and respond
-        # promptly
-        resp = self.request(path='/file/%s/database/select' % (
-            self.dbFileId, ), user=self.admin, params=params)
-        self.assertStatusOk(resp)
-        # The slow request should be cancelled
-        slow.join()
-        self.assertTrue(
-            'canceling statement due to user' in slowResults['exc'] or
-            'Internal server error' in slowResults['exc'] or
-            'InterruptedException' in slowResults['exc'])

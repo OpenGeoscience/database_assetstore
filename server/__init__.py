@@ -27,7 +27,7 @@ from girder.utility.assetstore_utilities import setAssetstoreAdapter
 from girder.utility.model_importer import ModelImporter
 
 from . import assetstore
-from .rest import DatabaseFileResource, dbInfoKey, DatabaseAssetstoreResource
+from .rest import DB_INFO_KEY, DatabaseAssetstoreResource, fileResourceRoutes
 
 
 @access.admin
@@ -112,9 +112,9 @@ def load(info):
 
     info['apiRoot'].database_assetstore = DatabaseAssetstoreResource()
 
-    DatabaseFileResource(info['apiRoot'])
+    fileResourceRoutes(info['apiRoot'].file)
 
     ModelImporter.model('file').exposeFields(
-        level=AccessType.ADMIN, fields=dbInfoKey)
+        level=AccessType.ADMIN, fields=DB_INFO_KEY)
     ModelImporter.model('file').exposeFields(
-        level=AccessType.SITE_ADMIN, fields=dbInfoKey)
+        level=AccessType.SITE_ADMIN, fields=DB_INFO_KEY)
