@@ -20,15 +20,15 @@ module.exports = function (grunt) {
     // This gruntfile is only designed to be used with girder's build system.
     // Fail if grunt is executed here.
     if (path.resolve(__dirname) === path.resolve(process.cwd())) {
-        grunt.fail.fatal('To build girder_db_items, run grunt from Girder\'s root directory');
+        grunt.fail.fatal('To build database_assetstore, run grunt from Girder\'s root directory');
     }
 
     grunt.config.merge({
         plugin: {
-            girder_db_items: {
-                root: '<%= pluginDir %>/girder_db_items',
-                static: '<%= staticDir %>/built/plugins/girder_db_items'
-                // node_modules: '<%= plugin.girder_db_items.root %>/node_modules'
+            database_assetstore: {
+                root: '<%= pluginDir %>/database_assetstore',
+                static: '<%= staticDir %>/built/plugins/database_assetstore'
+                // node_modules: '<%= plugin.database_assetstore.root %>/node_modules'
             }
         }
     });

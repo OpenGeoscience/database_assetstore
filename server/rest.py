@@ -22,470 +22,374 @@ import datetime
 import json
 import six
 
-from six.moves import range
-
 from girder.api import access
-from girder.api.v1.item import Item
 from girder.api.describe import describeRoute, Description
-from girder.api.rest import filtermodel, loadmodel, RestException
+from girder.api.rest import filtermodel, loadmodel, Resource, RestException, \
+    boundHandler
 from girder.models.model_base import AccessType
+from girder.utility import assetstore_utilities
+from girder.utility.progress import ProgressContext
 
-from . import dbs
-
-
-dbInfoKey = 'databaseMetadata'
-
-
-def convertSelectDataToDict(result):
-    """
-    Convert data in list format to dictionary format.  The column names are
-    used as the keys for each row.
-
-    :param result: the initial select results.
-    :returns: the results with data converted from a list of lists to a list of
-              dictionaries.
-    """
-    columns = {result['columns'][col]: col for col in result['columns']}
-    result['data'] = [{columns[i]: row[i] for i in range(len(row))}
-                      for row in result['data']]
-    result['format'] = 'dict'
-    return result
+from . import assetstore, dbs
+from .assetstore import DB_INFO_KEY
+from .query import DatabaseQueryException, dbFormatList, queryDatabase, \
+    preferredFormat
 
 
-def getFilters(conn, fields, filtersValue=None, queryParams={},
-               reservedParameters=[]):
-    """
-    Get a set of filters from a JSON list and/or from a set of query
-    parameters.  Only query parameters of the form (field)[_(operator)] where
-    the entire name is not in the reserver parameter list are processed.
-
-    :param conn: the database connector.  Used for validating fields.
-    :param fields: a list of known fields.  This is conn.getFieldInfo().
-    :filtersValue: a JSON object with the desired filters or None or empty
-                   string.
-    :queryParameters: a dictionary of query parameters that can add additional
-                      filters.
-    :reservedParameters: a list or set of reserver parameter names.
-    """
-    filters = []
-    if filtersValue not in (None, ''):
-        try:
-            filtersList = json.loads(filtersValue)
-        except ValueError:
-            filtersList = None
-        if not isinstance(filtersList, list):
-            raise RestException('The filters parameter must be a JSON list.')
-        for filter in filtersList:
-            filters.append(validateFilter(conn, fields, filter))
-    if queryParams:
-        for fieldEntry in fields:
-            field = fieldEntry['name']
-            for operator in dbs.FilterOperators:
-                param = field + ('' if operator is None else '_' + operator)
-                if param in queryParams and param not in reservedParameters:
-                    filters.append(validateFilter(conn, fields, {
-                        'field': field,
-                        'operator': operator,
-                        'value': queryParams[param]
-                    }))
-    return filters
-
-
-def getFieldsList(conn, fields=None, fieldsValue=None):
-    """
-    Get a list of fields from the query parameters.
-
-    :param conn: the database connector.  Used for validating fields.
-    :param fields: a list of known fields.  None to let the connector fetch
-                   them.
-    :param fieldsValue: either a comma-separated list, a JSON list, or None.
-    :returns: a list of fields or None.
-    """
-    if fieldsValue is None or fieldsValue == '':
-        return None
-    if '[' not in fieldsValue:
-        fieldsList = [field.strip() for field in fieldsValue.split(',')
-                      if len(field.strip())]
+@describeRoute(
+    Description('Get file database link information.')
+    .param('id', 'The ID of the file.', paramType='path')
+    .errorResponse('ID was invalid.')
+    .errorResponse('Read access was denied for the file.', 403)
+)
+@boundHandler()
+@access.user
+@loadmodel(model='file', map={'id': 'file'}, level=AccessType.READ)
+def getDatabaseLink(self, file, params):
+    if self.model('file').hasAccess(file, self.getCurrentUser(),
+                                    AccessType.WRITE):
+        return file.get(DB_INFO_KEY)
     else:
-        try:
-            fieldsList = json.loads(fieldsValue)
-        except ValueError:
-            fieldsList = None
-        if not isinstance(fieldsList, list):
-            raise RestException('The fields parameter must be a JSON list or '
-                                'a comma-separated list of known field names.')
-    for field in fieldsList:
-        if not conn.isField(
-                field, fields,
-                allowFunc=getattr(conn, 'allowFieldFunctions', False)):
-            raise RestException('Fields must use known fields %r.')
-    return fieldsList
+        return file.get(DB_INFO_KEY) is not None
 
 
-def getSortList(conn, fields=None, sortValue=None, sortDir=None):
+@describeRoute(
+    Description('Set or modify file database link information.')
+    .param('id', 'The ID of the file.', paramType='path')
+    .param('body', 'A JSON object containing the database information to '
+           'update.  At a minimum this must include "table" or '
+           '"collection".', paramType='body')
+    .notes('Set database information fields to null to delete them.')
+    .errorResponse('ID was invalid.')
+    .errorResponse('Invalid JSON passed in request body.')
+    .errorResponse('Write access was denied for the file.', 403)
+)
+@boundHandler()
+@access.user
+@loadmodel(model='file', map={'id': 'file'}, level=AccessType.ADMIN)
+@filtermodel(model='file')
+def createDatabaseLink(self, file, params):
+    dbs.clearDBConnectorCache(file['_id'])
+    dbinfo = self.getBodyJson()
+    if DB_INFO_KEY not in file:
+        file[DB_INFO_KEY] = {}
+    file[DB_INFO_KEY].update(six.viewitems(dbinfo))
+    toDelete = [k for k, v in six.viewitems(file[DB_INFO_KEY]) if v is None]
+    for key in toDelete:
+        del file[DB_INFO_KEY][key]
+    file['updated'] = datetime.datetime.utcnow()
+    dbinfo = file[DB_INFO_KEY]
+    return self.model('file').save(file)
+
+
+@describeRoute(
+    Description('Get information on the fields available for an file database '
+                'link.')
+    .param('id', 'The ID of the file.', paramType='path')
+    .errorResponse('ID was invalid.')
+    .errorResponse('Read access was denied for the file.', 403)
+    .errorResponse('File is not a database link.')
+    .errorResponse('Failed to connect to database.')
+)
+@boundHandler()
+@access.cookie
+@access.public
+@loadmodel(model='file', map={'id': 'file'}, level=AccessType.READ)
+def getDatabaseFields(self, file, params):
+    dbinfo = assetstore.getDbInfoForFile(file)
+    if not dbinfo:
+        raise RestException('File is not a database link.')
+    conn = dbs.getDBConnector(file['_id'], dbinfo)
+    fields = conn.getFieldInfo()
+    return fields
+
+
+@describeRoute(
+    Description('Refresh data associated with an file database link.')
+    .param('id', 'The ID of the file.', paramType='path')
+    .notes('This may be necessary if fields (columns) within the linked table '
+           'are added, dropped, or changed, or if the available database '
+           'functions are altered.')
+    .errorResponse('ID was invalid.')
+    .errorResponse('Read access was denied for the file.', 403)
+    .errorResponse('File is not a database link.')
+)
+@boundHandler()
+@access.public
+@loadmodel(model='file', map={'id': 'file'}, level=AccessType.READ)
+def databaseRefresh(self, file, params):
+    dbinfo = assetstore.getDbInfoForFile(file)
+    if not dbinfo:
+        raise RestException('File is not a database link.')
+    result = dbs.clearDBConnectorCache(file['_id'])
+    return {
+        'refreshed': result
+    }
+
+
+@describeRoute(
+    Description('Get data from a database link.')
+    .param('id', 'The ID of the file.', paramType='path')
+    .param('limit', 'Result set size limit (default=50).  Use \'none\' or a '
+           'negative value to return all rows (0 returns 0 rows)',
+           required=False)
+    .param('offset', 'Offset into result set (default=0).', required=False,
+           dataType='int')
+    .param('sort', 'Either a field to sort the results by or a JSON list of '
+           'multiple fields and directions for sorting the results (e.g., '
+           '[["field1", 1], ["field2", -1]])', required=False)
+    .param('sortdir', '1 for ascending, -1 for descending (default=1).  '
+           'Ignored if sort is unspecified or is a JSON list.', required=False,
+           dataType='int')
+    .param('fields', 'A comma-separated or JSON list of fields (column names) '
+           'to return (default is all fields).  If a JSON list is used, '
+           'instead of a plain string, a field may be a dictionary with a '
+           'function definition and an optional "reference" entry which is '
+           'used to identify the resultant column.', required=False)
+    .param('filters', 'A JSON list of filters to apply to the data.  Each '
+           'entry in the list can be either a list or a dictionary.  If a '
+           'list, it contains [(field), (operator), (value)], where '
+           '(operator) is optional.  If a dictionary, at least the "field" '
+           'and "value" keys must contain values, and "operator" and '
+           '"function" keys can also be added.', required=False)
+    .param('format', 'The format to return the data (default=list).',
+           required=False, enum=list(dbFormatList))
+    .param('pretty', 'If true, add whitespace to JSON outputs '
+           '(default=false).', required=False, dataType='boolean')
+    .param('clientid', 'A string to use for a client id.  If specified and '
+           'there is an extant query to this end point from the same '
+           'clientid, the extant query will be cancelled.', required=False)
+    .param('wait', 'Maximum duration in seconds to wait for data '
+           '(default=0).  If a positive value is specified and the initial '
+           'query returns no results, the query will be repeated every (poll) '
+           'seconds until this time elapses or there are some results.',
+           required=False, dataType='float', default=0)
+    .param('poll', 'Minimum interval in seconds between checking for data '
+           'when waiting (default=10).', required=False, dataType='float',
+           default=10)
+    .param('initwait', 'When waiting, initial delay in seconds before '
+           'starting to poll for more data.  This is not counted as part of '
+           'the wait duration (default=0).', required=False, dataType='float',
+           default=0)
+    .notes('Instead of or in addition to specifying a filters parameter, '
+           'additional query parameters of the form (field)[_(operator)]='
+           '(value) can be used.  '
+           'Operators depend on the data type of the field, and include = (no '
+           'operator or eq), != (<>, ne), >= (min, gte), <= (lte), > (gt), < '
+           '(max, lt), in, notin, ~ (regex), ~* (search -- typically a case '
+           'insensitive regex or word-stem search), !~ (notregex), !~* '
+           '(notsearch).  '
+           'If the backing database connector supports it, any place a field '
+           'can be used can be replaced with a function reference.  This is a '
+           'dictionary with "func" or with the name of the database function '
+           'and "params" which is a list of values, fields, or functions to '
+           'pass to the function.  If the param entry is not a dictionary, it '
+           'is treated as a value.  If a dictionary, it can contain "value", '
+           '"field", or "func" and "param".')
+    .errorResponse('ID was invalid.')
+    .errorResponse('Read access was denied for the file.', 403)
+    .errorResponse('File is not a database link.')
+    .errorResponse('Failed to connect to database.')
+    .errorResponse('The sort parameter must be a JSON list or a known field '
+                   'name.')
+    .errorResponse('Sort must use known fields.')
+    .errorResponse('The fields parameter must be a JSON list or a '
+                   'comma-separated list of known field names.')
+    .errorResponse('Fields must use known fields.')
+    .errorResponse('The filters parameter must be a JSON list.')
+    .errorResponse('Filters in list-format must have two or three components.')
+    .errorResponse('Unknown filter operator')
+    .errorResponse('Filters must be on known fields.')
+    .errorResponse('Cannot use operator on field')
+)
+@boundHandler()
+@access.cookie
+@access.public
+@loadmodel(model='file', map={'id': 'file'}, level=AccessType.READ)
+def databaseSelect(self, file, params):
+    dbinfo = assetstore.getDbInfoForFile(file)
+    if not dbinfo:
+        raise RestException('File is not a database link.')
+    queryparams = assetstore.getQueryParamsForFile(file)
+    queryparams.update(params)
+    try:
+        resultFunc, mimeType = queryDatabase(
+            file['_id'], dbinfo, queryparams)
+    except DatabaseQueryException as exc:
+        raise RestException(exc.message)
+    if resultFunc is None:
+        cherrypy.response.status = 500
+        return
+    cherrypy.response.headers['Content-Type'] = mimeType
+    return resultFunc
+
+
+def fileResourceRoutes(file):
     """
-    Get a list of sort fields and directions from the query parameters.
+    Add routes to the file resource.
 
-    :param conn: the database connector.  Used for validating fields.
-    :param fields: a list of known fields.  None to let the connector fetch
-                   them.
-    :param sortValue: either a sort field, a JSON list, or None.
-    :param sortDir: if sortValue is a sort field, the sort direction.
-    :returns: a list of sort parameters or None.
+    :param file: the file resource.
     """
-    if sortValue is None or sortValue == '':
-        return None
-    sort = None
-    if '[' not in sortValue:
-        if conn.isField(sortValue, fields) is not False:
-            sort = [(
-                sortValue,
-                -1 if sortDir in (-1, '-1', 'desc', 'DESC') else 1
-            )]
-    else:
-        try:
-            sortList = json.loads(sortValue)
-        except ValueError:
-            sortList = None
-        if not isinstance(sortList, list):
-            raise RestException('The sort parameter must be a JSON list or a '
-                                'known field name.')
-        sort = []
-        for entry in sortList:
-            if (isinstance(entry, list) and 1 <= len(entry) <= 2 and
-                    conn.isField(
-                        entry[0], fields,
-                        allowFunc=getattr(conn, 'allowSortFunctions', False))
-                    is not False):
-                sort.append((
-                    entry[0],
-                    -1 if len(entry) > 1 and entry[1] in
-                    (-1, '-1', 'desc', 'DESC') else 1
-                ))
-            elif (conn.isField(
-                    entry, fields,
-                    allowFunc=getattr(conn, 'allowSortFunctions', False))
-                    is not False):
-                sort.append((entry, 1))
-            else:
-                sort = None
-                break
-    if sort is None:
-        raise RestException('Sort must use known fields.')
-    return sort
+    file.route('GET', (':id', 'database'), getDatabaseLink)
+    file.route('POST', (':id', 'database'), createDatabaseLink)
+    file.route('GET', (':id', 'database', 'fields'), getDatabaseFields)
+    file.route('PUT', (':id', 'database', 'refresh'), databaseRefresh)
+    file.route('GET', (':id', 'database', 'select'), databaseSelect)
 
 
-def validateFilter(conn, fields, filter):
-    """
-    Validate a filter by ensuring that the field exists, the operator is valid
-    for that field's data type, and that any additional properties are allowed.
-    Convert the filter into a fully populated dictionary style (one that has at
-    least field, operator, and value).
+class DatabaseAssetstoreResource(Resource):
+    def __init__(self):
+        super(DatabaseAssetstoreResource, self).__init__()
+        self.resourceName = 'database_assetstore'
+        self.route('GET', (':id', 'tables'), self.getTables)
+        self.route('PUT', (':id', 'import'), self.importData)
 
-    :param conn: the database connector.  Used for validating fields.
-    :param fields: a list of known fields.
-    :param filter: either a dictionary or a list or tuple with two to three
-                   components representing (field), [(operator),] (value).
-    :returns filter: the filter in dictionary-style.
-    """
-    if isinstance(filter, (list, tuple)):
-        if len(filter) < 2 or len(filter) > 3:
-            raise RestException('Filters in list format must have two or '
-                                'three components.')
-        if len(filter) == 2:
-            filter = {'field': filter[0], 'value': filter[1]}
-        else:
-            filter = {
-                'field': filter[0], 'operator': filter[1], 'value': filter[2]
-            }
-    if filter.get('operator') not in dbs.FilterOperators:
-        raise RestException('Unknown filter operator %r' % filter.get(
-            'operator'))
-    filter['operator'] = dbs.FilterOperators[filter.get('operator')]
-    if 'field' not in filter and 'lvalue' in filter:
-        filter['field'] = {'value': filter['lvalue']}
-    if 'field' not in filter and ('func' in filter or 'lfunc' in filter):
-        filter['field'] = {
-            'func': filter.get('func', filter.get('lfunc')),
-            'param': filter.get('param', filter.get('params', filter.get(
-                'lparam', filter.get('lparams'))))
-        }
-    if 'value' not in filter and 'rfunc' in filter:
-        filter['value'] = {
-            'func': filter['rfunc'],
-            'param': filter.get('rparam', filter.get('rparams'))
-        }
-    if 'field' not in filter:
-        raise RestException('Filter must specify a field or func.')
-    if (not conn.isField(
-            filter['field'], fields,
-            allowFunc=getattr(conn, 'allowFilterFunctions', False)) and
-            not isinstance(filter['field'], dict) and
-            'value' not in filter['field'] and 'func' not in filter['field']):
-        raise RestException('Filters must be on known fields.')
-    if not filter.get('value'):
-        raise RestException('Filters must have a value or rfunc.')
-    if not conn.checkOperatorDatatype(filter['field'], filter['operator'],
-                                      fields):
-        raise RestException('Cannot use %s operator on field %s' % (
-            filter['operator'], filter['field']))
-    return filter
+    def _getTableList(self, assetstore):
+        """
+        Given an assetstore, return the list of known tables or collections.
 
+        :param assetstore: the assetstore document.
+        :returns: a list of known tables.
+        """
+        cls = dbs.getDBConnectorClass(assetstore['database']['dbtype'])
+        return cls.getTableList(
+            assetstore['database']['uri'],
+            dbparams=assetstore['database'].get('dbparams', {}))
 
-class DatabaseItemResource(Item):
+    def _parseTableList(self, tables, assetstore):
+        """
+        Given a list which can include plain strings and objects with
+        optionally database, name, and table, find the set of matching
+        databases and tables from the assetstore.
 
-    def __init__(self, apiRoot):
-        # Don't call the parent (Item) constructor, to avoid redefining routes,
-        # but do call the grandparent (Resource) constructor
-        super(Item, self).__init__()
+        :param tables: the input list of table names, '', objects with
+            database and possibly name keys, and objects with a table key.
+        :param assetstore: the assetstore document.
+        :returns: the list of table references with database and other
+            parameters as needed.
+        """
+        all = '' in tables or None in tables
+        tables = [{'name': table} if isinstance(table, six.string_types)
+                  else table for table in tables if table != '']
+        results = [table for table in tables if table.get('table') and not all]
+        tables = [table for table in tables if not table.get('table')]
+        if not len(tables) and not all:
+            return results
+        tableList = self._getTableList(assetstore)
+        defaultDatabase = dbs.databaseFromUri(assetstore['database']['uri'])
+        for database in tableList:
+            for tableEntry in database['tables']:
+                use = all
+                for table in tables:
+                    if (database['database'] ==
+                            table.get('database', defaultDatabase) and
+                            (not table.get('name') or table.get('name') ==
+                             tableEntry.get('name', tableEntry['table']))):
+                        use = True
+                if use:
+                    entry = tableEntry.copy()
+                    if not defaultDatabase:
+                        entry['database'] = database['database']
+                    results.append(entry)
+        return results
 
-        self.resourceName = 'item'
-        apiRoot.item.route('GET', (':id', 'database'), self.getDatabaseLink)
-        apiRoot.item.route('POST', (':id', 'database'),
-                           self.createDatabaseLink)
-        apiRoot.item.route('DELETE', (':id', 'database'),
-                           self.deleteDatabaseLink)
-        apiRoot.item.route('GET', (':id', 'database', 'fields'),
-                           self.getDatabaseFields)
-        apiRoot.item.route('PUT', (':id', 'database', 'refresh'),
-                           self.databaseRefresh)
-        apiRoot.item.route('GET', (':id', 'database', 'select'),
-                           self.databaseSelect)
-
+    @access.admin
+    @loadmodel(model='assetstore')
     @describeRoute(
-        Description('Get item database link information.')
-        .param('id', 'The ID of the item.', paramType='path')
-        .errorResponse('ID was invalid.')
-        .errorResponse('Read access was denied for the item.', 403)
+        Description('Get a list of tables or collections from a database.')
+        .notes('Only site administrators may use this endpoint.')
+        .param('id', 'The ID of the assetstore representing the Database.',
+               paramType='path')
+        .errorResponse()
+        .errorResponse('You are not an administrator.', 403)
     )
-    @access.user
-    @loadmodel(model='item', map={'id': 'item'}, level=AccessType.READ)
-    def getDatabaseLink(self, item, params):
-        if self.model('item').hasAccess(item, self.getCurrentUser(),
-                                        AccessType.WRITE):
-            return item.get(dbInfoKey)
-        else:
-            return item.get(dbInfoKey) is not None
+    def getTables(self, assetstore, params):
+        return self._getTableList(assetstore)
 
+    @access.admin
+    @loadmodel(model='assetstore')
     @describeRoute(
-        Description('Set or modify item database link information.')
-        .param('id', 'The ID of the item.', paramType='path')
-        .param('body', 'A JSON object containing the database information to '
-               'update. At a minimum this must include "type", "uri", and '
-               '"table".', paramType='body')
-        .notes('Set database information fields to null to delete them.')
-        .errorResponse('ID was invalid.')
-        .errorResponse('Invalid JSON passed in request body.')
-        .errorResponse('Unknown database type.')
-        .errorResponse('Database information is invalid.')
-        .errorResponse('Write access was denied for the item.', 403)
-    )
-    @access.user
-    @loadmodel(model='item', map={'id': 'item'}, level=AccessType.ADMIN)
-    @filtermodel(model='item')
-    def createDatabaseLink(self, item, params):
-        dbs.clearDBConnectorCache(item['_id'])
-        dbinfo = self.getBodyJson()
-        if dbInfoKey not in item:
-            item[dbInfoKey] = {}
-        item[dbInfoKey].update(six.viewitems(dbinfo))
-        toDelete = [k for k, v in six.viewitems(item[dbInfoKey]) if v is None]
-        for key in toDelete:
-            del item[dbInfoKey][key]
-        item['updated'] = datetime.datetime.utcnow()
-        dbinfo = item[dbInfoKey]
-        # Generate type set from connector classes
-        connClass = dbs.getDBConnectorClass(dbinfo.get('type'))
-        if not connClass:
-            raise RestException('Unknown database type.')
-        if not connClass.validate(**dbinfo):
-            raise RestException('Database information is invalid.')
-        return self.model('item').save(item)
-
-    @describeRoute(
-        Description('Delete item database link information.')
-        .param('id', 'The ID of the item.', paramType='path')
-    )
-    @access.user
-    @loadmodel(model='item', map={'id': 'item'}, level=AccessType.ADMIN)
-    def deleteDatabaseLink(self, item, params):
-        dbs.clearDBConnectorCache(item['_id'])
-        deleted = False
-        if dbInfoKey in item:
-            del item[dbInfoKey]
-            self.model('item').save(item)
-            deleted = True
-        return {
-            'deleted': deleted
-        }
-
-    @describeRoute(
-        Description('Get information on the fields available for an item '
-                    'database link.')
-        .param('id', 'The ID of the item.', paramType='path')
-        .errorResponse('ID was invalid.')
-        .errorResponse('Read access was denied for the item.', 403)
-        .errorResponse('Item is not a database link.')
-        .errorResponse('Failed to connect to database.')
-    )
-    @access.cookie
-    @access.public
-    @loadmodel(model='item', map={'id': 'item'}, level=AccessType.READ)
-    def getDatabaseFields(self, item, params):
-        dbinfo = item.get(dbInfoKey)
-        if not dbinfo:
-            raise RestException('Item is not a database link.')
-        conn = dbs.getDBConnector(item['_id'], dbinfo)
-        if not conn:
-            raise RestException('Failed to connect to database.')
-        fields = conn.getFieldInfo()
-        return fields
-
-    @describeRoute(
-        Description('Refresh data associated with an item database link.')
-        .param('id', 'The ID of the item.', paramType='path')
-        .notes('This may be necessary if fields (columns) within the linked '
-               'table are added, dropped, or changed, or if the available '
-               'database functions are altered.')
-        .errorResponse('ID was invalid.')
-        .errorResponse('Read access was denied for the item.', 403)
-        .errorResponse('Item is not a database link.')
-    )
-    @access.public
-    @loadmodel(model='item', map={'id': 'item'}, level=AccessType.READ)
-    def databaseRefresh(self, item, params):
-        dbinfo = item.get(dbInfoKey)
-        if not dbinfo:
-            raise RestException('Item is not a database link.')
-        result = dbs.clearDBConnectorCache(item['_id'])
-        return {
-            'refreshed': result
-        }
-
-    @describeRoute(
-        Description('Get data from a database link.')
-        .param('id', 'The ID of the item.', paramType='path')
-        .param('limit', 'Result set size limit (default=50).',
-               required=False, dataType='int')
-        .param('offset', 'Offset into result set (default=0).',
-               required=False, dataType='int')
-        .param('sort', 'Either a field to sort the results by or a JSON list '
-               'of multiple fields and directions for sorting the results '
-               '(e.g., [["field1", 1], ["field2", -1]])', required=False)
-        .param('sortdir', '1 for ascending, -1 for descending (default=1).  '
-               'Ignored if sort is unspecified or is a JSON list.',
-               required=False, dataType='int')
-        .param('fields', 'A comma-separated or JSON list of fields (column '
-               'names) to return (default is all fields).  If a JSON list is '
-               'used, instead of a plain string, a field may be a dictionary '
-               'with a function definition and an optional "reference" entry '
-               'which is used to identify the resultant column.',
+        Description('Import tables (also called collections) from a database '
+                    'assetstore to files.')
+        .notes('Only site administrators may use this endpoint.')
+        .param('id', 'The ID of the assetstore representing the database(s).',
+               paramType='path')
+        .param('parentId', 'The ID of the parent folder, collection, or user '
+               'in the Girder data hierarchy under which to import the files.')
+        .param('parentType', 'The type of the parent object to import into.',
+               enum=('folder', 'user', 'collection'), required=False)
+        .param('table', 'The name of a single table, or a JSON list.  Each '
+               'entry of the list is either a table name, an object with '
+               '\'database\' and \'name\' keys, or an object with at least a '
+               '\'table\' key.  If a table key is specified, the entire '
+               'object is used as the specification for table routing.  '
+               'Otherwise, if a database is specified without a name, all '
+               'tables from the database are imported.  If not specified or '
+               'an empty string is in the list, the assetstore will be '
+               'inspected and all tables will be imported.', required=False)
+        .param('sort', 'The default sort to use.  Either a field name or a '
+               'JSON list of fields and directions.', required=False)
+        .param('fields', 'The default fields to return.', required=False)
+        .param('filters', 'The default fields to return.', required=False)
+        .param('limit', 'The default limit of rows to return.  Use \'none\' '
+               'or a negative value to return all rows (0 returns 0 rows)',
                required=False)
-        .param('filters', 'A JSON list of filters to apply to the data.  Each '
-               'entry in the list can be either a list or a dictionary.  If a '
-               'list, it contains [(field), (operator), (value)], where '
-               '(operator) is optional.  If a dictionary, at least the '
-               '"field" and "value" keys must contain values, and "operator" '
-               'and "function" keys can also be added.', required=False)
-        .param('format', 'The format to return the data (default is '
-               'list).', required=False, enum=['list', 'dict'])
-        .param('clientid', 'A string to use for a client id.  If specified '
-               'and there is an extant query to this end point from the same '
-               'clientid, the extant query will be cancelled.', required=False)
-        .param('wait', 'Maximum duration in seconds to wait for data '
-               '(default=0).  If a positive value is specified and the '
-               'initial query returns no results, the query will be repeated '
-               'every (poll) seconds until this time elapses or there are '
-               'some results.', required=False, dataType='float', default=0)
-        .param('poll', 'Minimum interval in seconds between checking for data '
-               'when waiting (default=10).', required=False, dataType='float',
-               default=10)
-        .param('initwait', 'When waiting, initial delay in seconds before '
-               'starting to poll for more data.  This is not counted as part '
-               'of the wait duration (default=0).', required=False,
-               dataType='float', default=0)
-        .notes('Instead of or in addition to specifying a filters parameter, '
-               'additional query parameters of the form (field)[_(operator)]='
-               '(value) can be used.  '
-               'Operators depend on the data type of the field, and include = '
-               '(no operator or eq), != (<>, ne), >= (min, gte), <= (lte), > '
-               '(gt), < (max, lt), in, notin, ~ (regex), ~* (search -- '
-               'typically a case insensitive regex or word-stem search), !~ '
-               '(notregex), !~* (notsearch).  '
-               'If the backing database connector supports it, any place a '
-               'field can be used can be replaced with a function reference.  '
-               'This is a dictionary with "func" or with the name of the '
-               'database function and "params" which is a list of values, '
-               'fields, or functions to pass to the function.  If the param '
-               'entry is not a dictionary, it is treated as a value.  If a '
-               'dictionary, it can contain "value", "field", or "func" and '
-               '"param".')
-        .errorResponse('ID was invalid.')
-        .errorResponse('Read access was denied for the item.', 403)
-        .errorResponse('Item is not a database link.')
-        .errorResponse('Failed to connect to database.')
-        .errorResponse('The sort parameter must be a JSON list or a known '
-                       'field name.')
-        .errorResponse('Sort must use known fields.')
-        .errorResponse('The fields parameter must be a JSON list or a '
-                       'comma-separated list of known field names.')
-        .errorResponse('Fields must use known fields.')
-        .errorResponse('The filters parameter must be a JSON list.')
-        .errorResponse('Filters in list-format must have two or three '
-                       'components.')
-        .errorResponse('Unknown filter operator')
-        .errorResponse('Filters must be on known fields.')
-        .errorResponse('Cannot use operator on field')
+        .param('format', 'The default format return.', required=False,
+               enum=list(dbFormatList))
+        .param('progress', 'Whether to record progress on this operation ('
+               'default=False)', required=False, dataType='boolean')
+        .errorResponse()
+        .errorResponse('You are not an administrator.', 403)
     )
-    @access.cookie
-    @access.public
-    @loadmodel(model='item', map={'id': 'item'}, level=AccessType.READ)
-    def databaseSelect(self, item, params):
-        dbinfo = item.get(dbInfoKey)
-        if not dbinfo:
-            raise RestException('Item is not a database link.')
-        conn = dbs.getDBConnector(item['_id'], dbinfo)
-        if not conn:
-            raise RestException('Failed to connect to database.')
-        fields = conn.getFieldInfo()
-        queryProps = {
-            'limit': int(params.get('limit', 50)),
-            'offset': int(params.get('offset', 0)),
-            'sort': getSortList(conn, fields, params.get('sort'),
-                                params.get('sortdir')),
-            'fields': getFieldsList(conn, fields, params.get('fields')),
-            'wait': float(params.get('wait', 0)),
-            'poll': float(params.get('poll', 10)),
-            'initwait': float(params.get('initwait', 0)),
-        }
-        client = params.get('clientid')
-        format = params.get('format')
-        filters = getFilters(conn, fields, params.get('filters'), params, {
-            'limit', 'offset', 'sort', 'sortdir', 'fields', 'wait', 'poll',
-            'initwait', 'clientid', 'filters', 'format'})
-        result = conn.performSelectWithPolling(fields, queryProps, filters,
-                                               client)
-        if result is None:
-            cherrypy.response.status = 500
-            return
-        if 'fields' in result:
-            result['columns'] = {
-                result['fields'][col] if not isinstance(
-                    result['fields'][col], dict) else
-                result['fields'][col].get('reference', 'column_' + str(col)):
-                col for col in range(len(result['fields']))}
-        result['datacount'] = len(result.get('data', []))
-        result['format'] = 'list'
-        if format == 'dict':
-            result = convertSelectDataToDict(result)
+    def importData(self, assetstore, params):
+        self.requireParams(('parentId'), params)
 
-        # We could let Girder convert the results into JSON, but it is
-        # marginally faster to dump the JSON ourselves, since we can
-        # exclude sorting and reduce whitespace.
-        def resultFunc():
-            yield json.dumps(result, check_circular=False,
-                             separators=(',', ':'), sort_keys=False,
-                             default=str)
+        user = self.getCurrentUser()
 
-        cherrypy.response.headers['Content-Type'] = 'application/json'
-        return resultFunc
+        parentType = params.get('parentType', 'folder')
+        if parentType not in ('user', 'collection', 'folder'):
+            raise RestException('Invalid parentType.')
+        parent = self.model(parentType).load(params['parentId'], force=True,
+                                             exc=True)
+        tables = params.get('table', '')
+        if '[' in tables:
+            try:
+                tables = json.loads(tables)
+                if not isinstance(tables, list):
+                    raise ValueError()
+            except ValueError:
+                raise RestException('The table parameter must either be the '
+                                    'name of a table or a JSON list.')
+        else:
+            tables = [tables]
+        if params.get('limit') is not None:
+            try:
+                params['limit'] = int(params['limit'])
+            except ValueError:
+                raise RestException('The limit must be an integer or "none".')
+        if '' in tables:
+            tables = ['']
+        tables = self._parseTableList(tables, assetstore)
+        if not len(tables):
+            raise RestException(
+                'The list of tables must have at least one value.')
+        format = preferredFormat(params.get('format'))
+        if not format:
+            raise RestException(
+                'Format must be one of %s.' % ', '.join(list(dbFormatList)))
+
+        progress = self.boolParam('progress', params, default=False)
+
+        adapter = assetstore_utilities.getAssetstoreAdapter(assetstore)
+
+        with ProgressContext(
+                progress, user=user,
+                title='Importing data from Database assetstore') as ctx:
+            adapter.importData(parent, parentType, {
+                'tables': tables,
+                'sort': params.get('sort'),
+                'fields': params.get('fields'),
+                'filters': params.get('filters'),
+                'limit': params.get('limit'),
+                'format': format
+                }, ctx, user)

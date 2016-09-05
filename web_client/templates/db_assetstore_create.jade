@@ -1,0 +1,39 @@
+.panel.panel-default
+  .panel-heading(data-toggle="collapse",
+                 data-parent="#g-assetstore-accordion"
+                 data-target="#g-create-dbas-tab")
+    .panel-title
+      a
+        i.icon-database
+        span Create new #[b Database] assetstore
+  #g-create-dbas-tab.panel-collapse.collapse
+    .panel-body
+      p.
+        This type of assetstore can read from a variety of databases.  Tables,
+        collections, and mappings can be imported from existing databases into
+        the Girder data hierarchy.
+      form#g-new-dbas-form(role="form")
+        .form-group
+          label.control-label(for="g-new-dbas-name") Assetstore name
+          input.input-sm.form-control#g-new-dbas-name(type="text",
+                                                      placeholder="Name")
+        .form-group
+          label.control-label(for="g-new-dbas-dbtype") Database Type
+          // input.input-sm.form-control#g-new-dbas-dbtype(
+            type="text" placeholder="Database Type")
+          select.input-sm.form-control#g-new-dbas-dbtype
+            option(value='', disabled=true, selected=true) Select Database Type 
+            option(value='mongo') MongoDB
+            option(value='sqlalchemy_postgres') PostgreSQL
+            option(value='sqlalchemy') Generic SQL
+        .form-group(title='This is of the form [(dialect)://][(user name)[:(password)]@](server)[:(port)]/(database)[?(options)].  Dialect is one of mongodb, postgresql, sqlite, mysql, oracle, or mssql.  For example, postgresql://localhost/sampledb')
+          label.control-label(for="g-new-dbas-dburi") Database URI
+          input.input-sm.form-control#g-new-dbas-dburi(
+            type="text", placeholder="URI -- (dialect)://(user):(password)@(server):(port)/(database)?(options)")
+        // .form-group
+          label.control-label(for="g-new-dbas-table") Table or Collection
+          input.input-sm.form-control#g-new-dbas-table(
+            type="text", placeholder="Table")
+        p#g-new-dbas-error.g-validation-failed-message
+        input.g-new-assetstore-submit.btn.btn-sm.btn-primary(
+          type="submit", value="Create")

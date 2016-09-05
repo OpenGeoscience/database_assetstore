@@ -1,0 +1,12 @@
+- var databaseInfo = assetstore.get('database') || {}
+- var dbtypeNames = {mongo: 'MongoDB', sqlalchemy_postgres: 'PostgreSQL', sqlalchemy: 'Generic SQL'}
+
+div
+  b Type:
+  span.g-assetstore-type  Database
+div
+  b Database Type:
+  span  #{dbtypeNames[databaseInfo.dbtype]}
+div
+  b Database URI:
+  span  #{databaseInfo.uri.replace(/\/\/[^@\/]+@/, '//[user information]@')}

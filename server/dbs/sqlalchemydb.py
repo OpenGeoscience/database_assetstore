@@ -17,7 +17,9 @@
 #  limitations under the License.
 ##############################################################################
 
+import six
 import sqlalchemy
+import sqlalchemy.engine.reflection
 import sqlalchemy.orm
 import time
 
@@ -39,13 +41,46 @@ DatabaseOperators = {
 }
 
 
+_enginePool = {}
+_enginePoolMaxSize = 5
+
+
+def adjustDBUrl(url):
+    """
+    Adjust a url to match the form sqlalchemy requires.  In general, the url is
+    of the form dialect+driver://username:password@host:port/database.
+
+    :param url: the url to adjust.
+    :returns: the adjusted url
+    """
+    # The below code is disabled until a test can be made where it works.
+    # sqlalchemy doesn't seem to permit this without some additional module
+    # If the prefix is sql://, use the default generic-sql dialect
+    # if url.startswith('sql://'):
+    #     url = url.split('sql://', 1)[1]
+    return url
+
+
+def getEngine(url, **kwargs):
+    """
+    Get a sqlalchem engine from a pool in case we use the same parameters for
+    multiple connections.
+    """
+    key = (url, frozenset(six.viewitems(kwargs)))
+    engine = _enginePool.get(key)
+    if engine is None:
+        engine = sqlalchemy.create_engine(url, **kwargs)
+        if len(_enginePool) >= _enginePoolMaxSize:
+            _enginePoolMaxSize.clear()
+        _enginePool[key] = engine
+    return engine
+
+
 class SQLAlchemyConnector(base.DatabaseConnector):
     name = 'sqlalchemy'
 
     def __init__(self, *args, **kwargs):
         super(SQLAlchemyConnector, self).__init__(*args, **kwargs)
-        if not self.validate(**kwargs):
-            return
         self.table = kwargs.get('table')
         self.schema = kwargs.get('schema')
         self.dbEngine = None
@@ -53,11 +88,11 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         # dbparams can include values in http://www.postgresql.org/docs/
         #   current/static/libpq-connect.html#LIBPQ-PARAMKEYWORDS
         self.dbparams = kwargs.get('dbparams', {})
-        self.databaseUrl = kwargs.get('url')
+        self.databaseUrl = adjustDBUrl(kwargs.get('url'))
 
         # Additional parameters:
         #  idletime: seconds after which a connection is considered idle
-        #  abandontime: second after which a connection will be abandoned
+        #  abandontime: seconds after which a connection will be abandoned
         self.dbIdleTime = float(kwargs.get('idletime', 300))
         self.dbAbandonTime = float(kwargs.get('abandontime',
                                    self.dbIdleTime * 5))
@@ -163,8 +198,7 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         :return: a SQLAlchemny session object.
         """
         if not self.dbEngine:
-            self.dbEngine = sqlalchemy.create_engine(
-                self.databaseUrl, **self.dbparams)
+            self.dbEngine = getEngine(self.databaseUrl, **self.dbparams)
             metadata = sqlalchemy.MetaData(self.dbEngine)
             table = sqlalchemy.Table(self.table, metadata, schema=self.schema,
                                      autoload=True)
@@ -187,11 +221,14 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         # If we are asking for a specific client, clean up defunct clients
         curtime = time.time()
         if client:
-            for oldsess in self.sessions.keys():
+            for oldsess in list(self.sessions):
                 idle = curtime - self.sessions[oldsess]['last']
                 if ((idle > self.dbIdleTime and
                         not self.sessions[oldsess]['used']) or
                         idle > self.dbAbandonTime):
+                    # Close the session.  sqlalchemy keeps them too long
+                    # otherwise
+                    self.sessions[oldsess]['session'].close()
                     del self.sessions[oldsess]
         # Cancel an existing query
         if client in self.sessions and self.sessions[client]['used']:
@@ -229,6 +266,9 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         """
         if client in self.sessions:
             self.sessions[client]['used'] = False
+        else:
+            # Close the session.  sqlalchemy keeps them too long otherwise
+            db.close()
 
     def getFieldInfo(self):
         """
@@ -257,6 +297,39 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         if len(fields):
             self.fields = fields
         return fields
+
+    @staticmethod
+    def getTableList(url, dbparams={}, **kwargs):
+        """
+        Get a list of known databases, each of which has a list of known tables
+        from the database.  This is of the form [{'database': (database),
+        'tables': [{'schema': (schema), 'table': (table 1)}, ...]}]
+
+        :param url: url to connect to the database.
+        :param dbparams: optional parameters to send to the connection.
+        :returns: A list of known tables.
+        """
+        dbEngine = sqlalchemy.create_engine(adjustDBUrl(url), **dbparams)
+        insp = sqlalchemy.engine.reflection.Inspector.from_engine(dbEngine)
+        schemas = insp.get_schema_names()
+        defaultSchema = insp.default_schema_name
+
+        tables = [{'name': table, 'table': table}
+                  for table in dbEngine.table_names()]
+        tables.extend([{'name': view, 'table': view}
+                       for view in insp.get_view_names()])
+        databaseName = base.databaseFromUri(url)
+        results = [{'database': databaseName, 'tables': tables}]
+        for schema in schemas:
+            if schema != defaultSchema:
+                tables = [{'name': '%s.%s' % (schema, table),
+                           'table': table, 'schema': schema}
+                          for table in dbEngine.table_names(schema=schema)]
+                tables.extend([{'name': '%s.%s' % (schema, view),
+                                'table': view, 'schema': schema}
+                               for view in insp.get_view_names(schema=schema)])
+                results[0]['tables'].extend(tables)
+        return results
 
     def performSelect(self, fields, queryProps={}, filters=[], client=None):
         """
@@ -300,7 +373,8 @@ class SQLAlchemyConnector(base.DatabaseConnector):
                     sortCol = sortCol.desc()
                 sortList.append(sortCol)
             query = query.order_by(*sortList)
-        if 'limit' in queryProps:
+        if (queryProps.get('limit') is not None and
+                int(queryProps['limit']) >= 0):
             query = query.limit(int(queryProps['limit']))
         if 'offset' in queryProps:
             query = query.offset(int(queryProps['offset']))
@@ -335,4 +409,14 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         return True
 
 
-base.registerConnectorClass(SQLAlchemyConnector.name, SQLAlchemyConnector)
+# Make a list of the dialects this module supports.  There is no default
+# dialect.
+_dialects = {
+    'dialects': {},
+    'priority': 1,
+}
+for dialect in getattr(sqlalchemy.dialects, '__all__', []):
+    _dialects['dialects'][dialect] = dialect
+
+base.registerConnectorClass(SQLAlchemyConnector.name, SQLAlchemyConnector,
+                            _dialects)

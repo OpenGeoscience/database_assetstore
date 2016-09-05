@@ -17,11 +17,31 @@
 #  limitations under the License.
 ##############################################################################
 
+import bson.json_util
+import re
+import six
 from pymongo import MongoClient
 
-from . import base
+from girder import logger as log
 
-from girder.api.rest import RestException
+from . import base
+from .base import DatabaseConnectorException
+
+
+MongoOperators = {
+    'eq': '$eq',
+    'ne': '$ne',
+    'gt': '$gt',
+    'gte': '$gte',
+    'lt': '$lt',
+    'lte': '$lte',
+    'in': '$in',
+    'not_in': '$nin',
+    'regex': '$regex',
+    # not_regex, search, and not_search are handled as special cases
+    # search is treated as a case-insensitive, multiline regex
+    # is and not_is are the same as $eq and $ne unless the value is None
+}
 
 
 def inferFields(records):
@@ -32,64 +52,76 @@ def inferFields(records):
     return list(fields)
 
 
-def convertFields(headers, row):
-    return map(lambda field: row.get(field), headers)
-
-
 class MongoConnector(base.DatabaseConnector):
     name = 'mongo'
+    databaseNameRequired = False
 
     def __init__(self, *args, **kwargs):
         super(MongoConnector, self).__init__(*args, **kwargs)
-        if not self.validate(**kwargs):
-            return
-
-        self.database = kwargs.get('database')
-        self.collection = kwargs.get('collection')
+        self.collection = kwargs.get('collection', kwargs.get('table'))
         self.databaseUrl = kwargs.get('url')
+        self.databaseName = kwargs.get(
+            'database', base.databaseFromUri(self.databaseUrl))
+
+        self.fieldInfo = None
 
         self.initialized = True
 
-    def _applyFilter(self, clauses, filt):
-        operator = filt['operator']
+    def _applyFilter(self, clauses, filter):
+        operator = filter['operator']
         operator = base.FilterOperators.get(operator)
 
-        if operator in ['eq', 'ne', 'lt', 'gte']:
-            field = filt['field']
-            value = filt['value']
-            operator = '$' + operator
-
-            clauses.append({field: {operator: value}})
+        field = filter['field']
+        if not isinstance(field, six.string_types):
+            raise DatabaseConnectorException(
+                'Filters must use a known field as the left value')
+        value = filter['value']
+        if operator in MongoOperators:
+            operator = MongoOperators[operator]
+        elif operator == 'not_regex':
+            operator = '$not'
+            value = re.compile(filter['value'])
+        elif operator in ('search', 'not_search'):
+            operator = '$regex' if operator == 'search' else '$not'
+            value = re.compile(filter['value'],
+                               re.IGNORECASE | re.MULTILINE | re.DOTALL)
+        elif operator in ('is', 'not_is'):
+            if value is None:
+                operator = '$in' if operator == 'is' else '$nin'
+                value = [None]
+            else:
+                operator = '$eq' if operator == 'is' else '$ne'
         else:
-            raise RestException('operator %s unimplemented' % (operator))
-
+            raise DatabaseConnectorException('operator %s unimplemented' % (
+                operator))
+        clauses.append({field: {operator: value}})
         return clauses
 
     def connect(self):
         self.conn = MongoClient(self.databaseUrl)
+        self.database = self.conn[self.databaseName]
+        return self.database[self.collection]
 
     def disconnect(self):
         self.conn.close()
         self.conn = None
 
     def performSelect(self, fields, queryProps={}, filters=[], client=None):
-        self.connect()
-
         result = super(MongoConnector, self).performSelect(
             fields, queryProps, filters)
-        coll = self.conn[self.database][self.collection]
 
         filterQueryClauses = []
         for filt in filters:
             filterQueryClauses = self._applyFilter(filterQueryClauses, filt)
 
         opts = {}
-        for k, v in queryProps.iteritems():
+        for k, v in six.iteritems(queryProps):
             target = None
-            if k == 'fields':
+            if k == 'fields' and v and v != []:
                 target = 'projection'
-                if v == []:
-                    v = None
+                v = {field: True for field in v}
+                if '_id' not in v:
+                    v['_id'] = False
             elif k == 'offset':
                 target = 'skip'
             elif k in ['limit', 'no_cursor_timeout', 'cursor_type', 'sort',
@@ -101,36 +133,87 @@ class MongoConnector(base.DatabaseConnector):
 
         if len(filterQueryClauses) > 0:
             opts['filter'] = {'$and': filterQueryClauses}
-        elif 'filter' in opts:
-            del opts['filter']
 
-        results = list(coll.find(**opts))
-        headers = inferFields(results)
-        results = [convertFields(headers, row) for row in results]
-
-        result['data'] = results
-
-        self.disconnect()
+        result['format'] = 'dict'
+        if queryProps.get('limit') == 0:
+            result['data'] = []
+        else:
+            if queryProps.get('limit') < 0:
+                opts['limit'] = 0
+            coll = self.connect()
+            log.info('Query: %s', bson.json_util.dumps(
+                opts, check_circular=False, separators=(',', ':'),
+                sort_keys=False, default=str, indent=None))
+            cursor = coll.find(**opts)
+            result['datacount'] = cursor.count(True)
+            result['data'] = cursor
+            self.disconnect()
 
         return result
 
     def getFieldInfo(self):
-        self.connect()
-        coll = self.conn[self.database][self.collection]
+        if self.fieldInfo is None:
+            # cache the fieldInfo so we don't process all of the documents
+            # every time.
+            coll = self.connect()
 
-        results = coll.find()
-        headers = inferFields(results)
+            fields = {}
+            for result in coll.find():
+                fields.update(result)
+            headers = inferFields([fields])
 
-        fieldInfo = []
-        for h in headers:
-            fieldInfo.append({'name': h,
-                              'type': 'unknown'})
+            fieldInfo = []
+            for h in sorted(headers):
+                fieldInfo.append({'name': h,
+                                  'type': 'unknown'})
+            self.fieldInfo = fieldInfo
+        return self.fieldInfo
 
-        return fieldInfo
+    @staticmethod
+    def getTableList(url, **kwargs):
+        """
+        Get a list of known databases, each of which has a list of known
+        collections from the database.  This is of the form [{'database':
+        (database 1), 'tables': [{'table': (collection 1)}, {'table':
+        (collection 2)}, ...]}, {'database': (database 2), 'tables': [...]},
+        ...]
+
+        :param url: url to connect to the database.
+        :returns: A list of known tables.
+
+        :param url: url to connect to the database.
+        :returns: A list of known collections.
+        """
+        conn = MongoClient(url)
+        databaseName = base.databaseFromUri(url)
+        if databaseName is None:
+            databaseNames = conn.database_names()
+        else:
+            databaseNames = [databaseName]
+        results = []
+        for name in databaseNames:
+            database = conn[name]
+            results.append({
+                'database': name,
+                'tables': [{'table': collection, 'name': collection}
+                           for collection in database.collection_names(False)]
+            })
+        return results
 
     @staticmethod
     def validate(url=None, database=None, collection=None, **kwargs):
-        return url and database and collection
+        return url and collection
+
+    @staticmethod
+    def jsonDumps(*args, **kwargs):
+        return bson.json_util.dumps(*args, **kwargs)
 
 
-base.registerConnectorClass(MongoConnector.name, MongoConnector)
+base.registerConnectorClass(MongoConnector.name, MongoConnector, {
+    'dialects': {
+        'mongodb': 'mongodb',
+        'mongo': 'mongodb',
+    },
+    'default_dialect': 'mongodb',
+    'priority': 0,
+})

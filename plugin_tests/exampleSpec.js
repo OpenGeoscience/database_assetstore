@@ -1,19 +1,13 @@
 $(function () {
     girderTest.addCoveredScripts([
-    /*
-        '/static/built/plugins/girder_db_items/templates.js',
-        '/plugins/girder_db_items/web_client/js/imageViewerSelectWidget.js',
-        '/plugins/girder_db_items/web_client/js/imageViewerWidget/base.js',
-        '/plugins/girder_db_items/web_client/js/imageViewerWidget/geojs.js',
-        '/plugins/girder_db_items/web_client/js/imageViewerWidget/leaflet.js',
-        '/plugins/girder_db_items/web_client/js/imageViewerWidget/openlayers.js',
-        '/plugins/girder_db_items/web_client/js/imageViewerWidget/openseadragon.js',
-        '/plugins/girder_db_items/web_client/js/imageViewerWidget/slideatlas.js'
-    */
+        '/plugins/database_assetstore/web_client/js/AssetstoreModel.js',
+        '/plugins/database_assetstore/web_client/js/AssetstoresPage.js',
+        '/plugins/database_assetstore/web_client/js/ImportView.js',
+        '/static/built/plugins/database_assetstore/templates.js'
     ]);
 
     girderTest.importStylesheet(
-        '/static/built/plugins/girder_db_items/plugin.min.css'
+        '/static/built/plugins/database_assetstore/plugin.min.css'
     );
 
     girder.events.trigger('g:appload.before');

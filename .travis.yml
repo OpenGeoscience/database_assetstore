@@ -2,6 +2,7 @@ language: python
 
 python:
     - "2.7"
+    - "3.4"
 
 cache:
     directories:
@@ -27,10 +28,13 @@ before_install:
     - rm -fr $girder_path
     # We use the current girder master
     - git clone https://github.com/girder/girder.git $girder_path
-    - ln -sf $main_path $girder_path/plugins/
+    - ln -sf $main_path $girder_path/plugins/database_assetstore
     - ls -l $girder_path/plugins
 
-    - export MONGO_VERSION=3.0.7
+    - export MONGO_VERSION=3.2.8
+    # From python core, not sure if strictly necessary.
+    - if [ ${TRAVIS_PYTHON_VERSION:0:1} == "3" ]; then export PY3="true"; else export PY2="true"; fi
+    - if [ -n "${PY3}" ]; then export IGNORE_PLUGINS=hdfs_assetstore,metadata_extractor; fi
     - export PY_COVG="ON"
     - CACHE=$HOME/.cache source $girder_path/scripts/install_mongo.sh
     - mkdir /tmp/db
@@ -40,14 +44,19 @@ before_install:
     - CACHE=$HOME/.cache CMAKE_VERSION=3.1.0 CMAKE_SHORT_VERSION=3.1 source $girder_path/scripts/install_cmake.sh
     - cmake --version
 
+    - mkdir -p $HOME/.cache/node_modules || true
+    - ln -sf $HOME/.cache/node_modules .
+    - nvm install v2.3.3
     - npm install -g npm
+    - node --version
     - npm --version
+    - npm prune
 
     - pip install -U pip virtualenv
 
 install:
     - cd $girder_path
-    - pip install -U -r requirements.txt -r requirements-dev.txt -r $main_path/requirements.txt -e .
+    - pip install -r requirements-dev.txt -r $main_path/requirements.txt -e .[plugins]
     - npm install
 
 before_script:
@@ -64,12 +73,15 @@ before_script:
 
 script:
     - mkdir -p $build_path/girder_testing_build
-    - cd $build_path/girder_testing_build
-    - cmake -DPYTHON_COVERAGE:BOOL=${PY_COVG} -DPYTHON_VERSION:STRING=${TRAVIS_PYTHON_VERSION} -DCOVERAGE_MINIMUM_PASS=30 $girder_path
+    - cmake -DRUN_CORE_TESTS:BOOL=OFF -DBUILD_JAVASCRIPT_TESTS:BOOL=OFF -DTEST_PLUGINS:STRING=database_assetstore -DPYTHON_COVERAGE:BOOL=${PY_COVG} -DPYTHON_VERSION:STRING=${TRAVIS_PYTHON_VERSION} -DCOVERAGE_MINIMUM_PASS=90 -DJS_COVERAGE_MINIMUM_PASS=10 $girder_path
     - make
-    - gunzip -c data/plugins/girder_db_items/testdb.sql.gz | psql -U postgres sampledb
-    # Show that we loaded the database properly
+    # Load postgres and show that we loaded the database properly
+    - gunzip -c data/plugins/database_assetstore/testdb.sql.gz | psql -U postgres sampledb
     - psql -U postgres -h 127.0.0.1 sampledb -c "SELECT table_type,table_name FROM information_schema.tables WHERE table_schema='public' order by table_name;" | cat
+    # Load mongo and show that we loaded the database properly
+    - bunzip2 -c data/plugins/database_assetstore/mongodb.permits.json.bz2 | mongoimport --db boston --collection permits
+    - mongo boston --eval 'db.permits.count()'
+
     # Only some functions are available in the version that Travis has.
     # - psql -U postgres -h 127.0.0.1 sampledb -c "SELECT lower(proname), provolatile FROM pg_proc order by lower(proname);" | cat
-    - JASMINE_TIMEOUT=15000 ctest -VV -R '(coverage_reset|py_coverage_combine|girder_db_items|py_coverage$|py_coverage_xml)'
+    - JASMINE_TIMEOUT=15000 ctest -VV

@@ -19,8 +19,7 @@
 
 import time
 
-_connectorClasses = {}
-_connectorCache = {}
+from girder.models.model_base import GirderException
 
 
 FilterOperators = {
@@ -70,6 +69,10 @@ DatatypeOperators = {
                'not_regex', 'search', 'not_search'},
 }
 
+_connectorClasses = {}
+_connectorCache = {}
+_connectorCacheMaxSize = 10  # Probably should make this configurable
+
 
 def getDBConnectorClass(name):
     """
@@ -79,18 +82,47 @@ def getDBConnectorClass(name):
     :param name: name of the connector class, as registered by __init__.
     :return: the connector class or None
     """
-    return _connectorClasses.get(name)
+    return _connectorClasses.get(name, {}).get('class')
 
 
-def registerConnectorClass(name, cls):
+def getDBConnectorClassFromDialect(dialect, name=None):
+    """
+    Get a DB connector class and preferred dialect.  This checks if such a
+    class exists and either returns a class and dialect name or None.
+
+    :param dialect: name of a dialect.
+    :param name: name of the DB connector.  If None, all DB connectors are
+                 checked.
+    :return: the preferred dialect name or None.
+    :return: the connector class name or None.
+    """
+    # Sort our classes by priority (lower is higher priority) and find the
+    # first class that has the specified dialect.
+    classes = [record[-1] for record in sorted([
+        (_connectorClasses[cname]['dialect'].get('priority', 0), cname)
+        for cname in _connectorClasses if cname == name or not name])]
+    for name in classes:
+        dialects = _connectorClasses[name]['dialect'].get('dialects', {})
+        if dialect in dialects:
+            return dialects[dialect], name
+    if dialect in classes:
+        return _connectorClasses[dialect]['dialect'].get(
+            'default_dialect', dialect), dialect
+    return None, None
+
+
+def registerConnectorClass(name, cls, dialects):
     """
     Register a connector class with a specific name.
 
     :param name: the name to register.  This is what an item has to specify in
                  the 'type' field.
     :param cls: a reference to the connector class.
+    :param dialects: a dictionary of dialect names that this class handles.
+                     The keys are allowed dialect names, and the values are
+                     the dialect names that should be used.
     """
-    _connectorClasses[name] = cls
+    _connectorClasses[name] = {'class': cls, 'dialect': dialects}
 
 
 def clearDBConnectorCache(id):
@@ -101,7 +133,7 @@ def clearDBConnectorCache(id):
     """
     id = str(id)
     if id in _connectorCache:
-        del _connectorCache[id]
+        _connectorCache.pop(id, None)
         return True
     return False
 
@@ -110,28 +142,39 @@ def getDBConnector(id, dbinfo):
     """
     Get a specific DB connector, caching it if possible.
 
-    :param id: key for the connector cache.
+    :param id: key for the connector cache.  None to never use the cache.
     :param dbinfo: a dictionary of information to pass to the connector
     :return: the connector instance, or None if none available.
     """
-    id = str(id)
-    if id not in _connectorCache:
+    if id is not None:
+        id = str(id)
+    conn = _connectorCache.get(id, None)
+    if conn is None:
         connClass = getDBConnectorClass(dbinfo.get('type'))
         if connClass is None:
             return None
         conn = connClass(**dbinfo)
         if not getattr(conn, 'initialized', None):
             return None
-        _connectorCache[id] = conn
-    return _connectorCache[id]
+        if id is not None:
+            if len(_connectorCache) > _connectorCacheMaxSize:
+                _connectorCache.clear()
+            _connectorCache[id] = conn
+    return conn
 
 
-class DatabaseConnectorException(Exception):
+class DatabaseConnectorException(GirderException):
     pass
 
 
 class DatabaseConnector(object):
+    # If a database connector can query available databases, set this to false
+    databaseNameRequired = True
+
     def __init__(self, *args, **kwargs):
+        if not self.validate(**kwargs):
+            raise DatabaseConnectorException(
+                'Failed to validate database connector.')
         self.initialized = False
         self.allowFieldFunctions = False
         self.allowSortFunctions = False
@@ -165,6 +208,20 @@ class DatabaseConnector(object):
 
         :return: a list of known fields.  Each entry is a dictionary with name,
                  datatype, and optionally a description.
+        """
+        return []
+
+    @staticmethod
+    def getTableList(url, **kwargs):
+        """
+        Get a list of known databases, each of which has a list of known tables
+        from the database.  This is of the form [{'database': (database 1),
+        'tables': [...]}, {'database': (database 2), 'tables': [...]}, ...].
+        Each table entry is of the form {'table': (table 1), 'name': (name 1)}
+        and may contain additonal connection information, such as schema.
+
+        :param url: url to connect to the database.
+        :returns: A list of known tables.
         """
         return []
 
@@ -244,7 +301,7 @@ class DatabaseConnector(object):
         """
         Perform a select query.  The results are passed back as a dictionary
         with the following values:
-          limit: the limit used in the query
+          limit: the limit used in the query.  Negative or None for all.
           offset: the offset used in the query
           sort: the list of sort parameters used in the query.
           fields: a list of the fields that are being returned in the order
@@ -318,3 +375,24 @@ class DatabaseConnector(object):
         :returns: True if the arguments should allow connecting to the db.
         """
         return False
+
+    # Enable and override to customize how data gets dumped to json
+    # @staticmethod
+    # def jsonDumps(*args, **kwargs):
+    #     return json.dumps(*args, **kwargs)
+
+
+def databaseFromUri(uri):
+    """
+    Extract the name of the database from the database connection uri.  If
+    there is no database, return None.  The uri is of the form
+    (dialect)://[(user name)[:(password)]@](server)[:(port)]
+    [/[(database)[/]]][?(options)]
+
+    :param uri: the database connection uri.
+    :returns: the name of the database or None.
+    """
+    parts = uri.split('://', 1)[-1].split('/')
+    if len(parts) < 2 or not parts[1]:
+        return None
+    return parts[1]

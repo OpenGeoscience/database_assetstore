@@ -17,9 +17,16 @@
 #  limitations under the License.
 ##############################################################################
 
-from base import (getDBConnectorClass, getDBConnector,   # noqa
-                  clearDBConnectorCache, FilterOperators,
-                  DatabaseConnectorException)
-import sqlalchemydb  # noqa
-import postgres_sqlalchemy  # noqa
-import mongo  # noqa
+from .base import (
+    getDBConnectorClass, getDBConnector, getDBConnectorClassFromDialect,
+    clearDBConnectorCache, FilterOperators, DatabaseConnectorException,
+    databaseFromUri)
+from . import sqlalchemydb
+from . import postgres_sqlalchemy
+from . import mongo
+
+__all__ = [
+    'getDBConnectorClass', 'getDBConnector', 'getDBConnectorClassFromDialect',
+    'clearDBConnectorCache', 'FilterOperators', 'DatabaseConnectorException',
+    'databaseFromUri', 'sqlalchemydb', 'postgres_sqlalchemy', 'mongo',
+]

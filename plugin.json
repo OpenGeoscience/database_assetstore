@@ -1,6 +1,6 @@
 {
-    "name": "Database Items",
-    "description": "Provide database access via items.",
+    "name": "Database assetstore",
+    "description": "Provide database access via assetstores.",
     "version": "0.1.0",
     "dependencies": [],
     "grunt": "Gruntfile.js"
