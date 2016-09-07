@@ -66,7 +66,21 @@ The ``GET`` ``file/{id}/database/select`` endpoint has numerous options:
   * ``[{"func": "lower", "param": [{"field": "town"}], "value": "boston"}]`` - the lower-case version of the town field must equal "boston".
   * ``[["pop2010", ">", 100000], {"field": "town", "operator": "ne", "value": "BOSTON"}]`` - the population in 2010 must be greater than 100,000, but don't mention Boston.
 
-* *format* - data can be returned as a list of list, where each entry is a list of the returned fields, or as a list of dictionaries, where each entry is a map of the field names and the values.  The ``list`` format is more efficient.  The results are identical except for the data representation.
+* *format* - data can be returned in a variety of formats:
+
+  * ``list`` - a list of lists, where each entry is a list of the returned fields.  There is information about the query and fields in some top-level keys.  This is usually the most efficient return method.
+  
+  * ``dict`` - a list of dictionaries, where each entry is a map of the field names and the values.  There is information about the query and fields in some top-level keys.
+
+  * ``csv`` - a comma-separated value text format.
+
+  * ``json`` - the same as ``dict`` without the top-level information.
+
+  * ``jsonlines`` - each row is a stand-alone JSON object.
+
+  * ``geojson`` - any value that could be GeoJSON is combined into a single GeometryCollection object.  Values that are not GeoJSON are ignored.  This is only useful if the database returns GeoJSON strings or dictionaries.  All values in all rows are combined together in order.
+
+    For instance, when using a Postgres database with the PostGIS extension, if there is a column with geometry information called ``geom``, asking for the GeoJSON output of the fields ``[{"func": "ST_AsGeoJSON", "param": [{"func": "st_transform", "param": [{"field": "geom"}, 4326]}]}]`` would get a single GeoJSON object of all of the rows in the EPSG:4326 coordinate system.
 
 * *clientid* - an optional client ID can be specified with each request.  If this is included, and there is a pending select request from the same client ID, the pending request will be cancelled if possible.  This can be used when a client no longer needs the data from a first request because the new request will replace it.
 

@@ -1,4 +1,5 @@
 import bson
+import collections
 import csv
 import datetime
 import decimal
@@ -12,13 +13,15 @@ from girder.models.model_base import GirderException
 from .dbs import getDBConnector, FilterOperators, DatabaseConnectorException
 
 
-dbFormatList = {
-    'list': 'application/json',
-    'dict': 'application/json',
-    'csv': 'text/csv',
-    'json': 'application/json',  # Same as the data component of dict
-    'jsonlines': 'text/plain',
-}
+dbFormatList = collections.OrderedDict([
+    ('list', 'application/json'),
+    ('dict', 'application/json'),
+    ('csv', 'text/csv'),
+    ('json', 'application/json'),  # Same as the data component of dict
+    ('jsonlines', 'text/plain'),
+    # http,//www.iana.org/assignments/media-types/application/vnd.geo+json
+    ('geojson', 'application/vnd.geo+json'),
+])
 
 
 class DatabaseQueryException(GirderException):
@@ -76,6 +79,44 @@ def convertSelectDataToDict(result, *args, **kargs):
         result['data'] = convertSelectDataToJson(result)
         result['format'] = 'dict'
     return result
+
+
+def convertSelectDataToGeojson(result, dumpFunc=json.dumps, *args, **kargs):
+    """
+    Convert data in list format to a single GeoJSON geometry collection.  All
+    columns in all rows are merged into a single object.  If the entry is
+    obviously not a GeoJSON object, it is excluded.
+
+    :param result: the initial select results.
+    :param dumpFunc: function for dumping objects to JSON.
+    :returns: a function that outputs a generator.
+    """
+    data = convertSelectDataToList(result)['data']
+
+    def resultFunc():
+        first = True
+        yield '{"type":"GeometryCollection","geometries":[\n'
+        for row in data:
+            for entry in row:
+                if isinstance(entry, six.string_types):
+                    value = entry.strip()
+                    if not value.startswith('{') or not value.endswith('}'):
+                        value = None
+                elif isinstance(entry, dict):
+                    value = dumpFunc(
+                        entry, check_circular=False, separators=(',', ':'),
+                        sort_keys=False, default=str, indent=None).strip()
+                else:
+                    value = None
+                if value:
+                    if first:
+                        yield value
+                        first = False
+                    else:
+                        yield ',\n' + value
+        yield '\n]}'
+
+    return resultFunc
 
 
 def convertSelectDataToJson(result, *args, **kargs):
