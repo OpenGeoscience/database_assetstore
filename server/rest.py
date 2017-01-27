@@ -242,6 +242,7 @@ class DatabaseAssetstoreResource(Resource):
         super(DatabaseAssetstoreResource, self).__init__()
         self.resourceName = 'database_assetstore'
         self.route('GET', (':id', 'tables'), self.getTables)
+        self.route('GET', (':id', 'geo_tables'), self.getGeoTables)
         self.route('PUT', (':id', 'import'), self.importData)
 
     def _getTableList(self, assetstore):
@@ -253,6 +254,19 @@ class DatabaseAssetstoreResource(Resource):
         """
         cls = dbs.getDBConnectorClass(assetstore['database']['dbtype'])
         return cls.getTableList(
+            assetstore['database']['uri'],
+            dbparams=assetstore['database'].get('dbparams', {}))
+
+    def _getGeoTableList(self, assetstore):
+        """
+        Given an assetstore, return the list of known geospatial
+        tables or collections.
+
+        :param assetstore: the assetstore document.
+        :returns: a list of known tables.
+        """
+        cls = dbs.getDBConnectorClass(assetstore['database']['dbtype'])
+        return cls.getGeoTableList(
             assetstore['database']['uri'],
             dbparams=assetstore['database'].get('dbparams', {}))
 
@@ -305,6 +319,19 @@ class DatabaseAssetstoreResource(Resource):
     )
     def getTables(self, assetstore, params):
         return self._getTableList(assetstore)
+
+    @access.admin
+    @loadmodel(model='assetstore')
+    @describeRoute(
+        Description('Get a list of geospatial tables or collections from a database.')
+        .notes('Only site administrators may use this endpoint.')
+        .param('id', 'The ID of the assetstore representing the Database.',
+               paramType='path')
+        .errorResponse()
+        .errorResponse('You are not an administrator.', 403)
+    )
+    def getGeoTables(self, assetstore, params):
+        return self._getGeoTableList(assetstore)
 
     @access.admin
     @loadmodel(model='assetstore')

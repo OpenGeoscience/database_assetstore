@@ -299,6 +299,23 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         return fields
 
     @staticmethod
+    def getGeoTableList(url, dbparams={}, **kwargs):
+        """
+        Get a list of known databases, each of which has a list of known tables
+        from the database.  This is of the form [{'database': (database),
+        'tables': [{'schema': (schema), 'table': (table 1)}, ...]}]
+
+        :param url: url to connect to the database.
+        :param dbparams: optional parameters to send to the connection.
+        :returns: A list of known tables.
+        """
+
+        dbEngine = sqlalchemy.create_engine(adjustDBUrl(url), **dbparams)
+        geo = dbEngine.execute("SELECT * FROM geometry_columns WHERE f_table_schema='public'")
+        formatted_geo = [dict(zip(geo.keys(), i)) for i in geo.fetchall()]
+        return formatted_geo
+
+    @staticmethod
     def getTableList(url, dbparams={}, **kwargs):
         """
         Get a list of known databases, each of which has a list of known tables
