@@ -26,8 +26,9 @@ before_install:
 
     - girder_path=$build_path/girder
     - rm -fr $girder_path
-    # We use the current girder master
-    - git clone https://github.com/girder/girder.git $girder_path
+    # We use girder 1.7
+    - GIRDER_VERSION=1.x-maintenance
+    - git clone --branch $GIRDER_VERSION https://github.com/girder/girder.git $girder_path
     - ln -sf $main_path $girder_path/plugins/database_assetstore
     - ls -l $girder_path/plugins
 

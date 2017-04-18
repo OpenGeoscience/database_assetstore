@@ -493,6 +493,28 @@ class FileTest(base.TestCase):
         self.assertStatusOk(resp)
         self.assertEqual(resp.json['fields'], json.loads(params['fields']))
         self.assertEqual(resp.json['columns'], {'town': 0, 'popmod': 1})
+        # Distinct and count can always be used as functions
+        # Distinct must be the first field
+        params['fields'] = json.dumps([
+            {'func': 'distinct', 'param': [{'field': 'pop2010'}]},
+            'town',
+        ])
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(resp.json['fields'], json.loads(params['fields']))
+        self.assertEqual(resp.json['columns'], {'town': 1, 'column_0': 0})
+        # Count will return the tally of the distinct values
+        params['fields'] = json.dumps([
+            {'func': 'count', 'param': [{'func': 'distinct', 'param': [{'field': 'pop2010'}]}]},
+        ])
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(resp.json['fields'], json.loads(params['fields']))
+        self.assertEqual(resp.json['columns'], {'column_0': 0})
+        self.assertEqual(len(resp.json['data']), 1)
+        self.assertEqual(resp.json['data'][0][0], 348)
         # Test some function handling
         params['sort'] = 'town'
         params['fields'] = json.dumps([

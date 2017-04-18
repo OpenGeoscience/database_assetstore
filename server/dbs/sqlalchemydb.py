@@ -110,7 +110,10 @@ class SQLAlchemyConnector(base.DatabaseConnector):
             pass
 
         self.tableClass = Table
-        self._allowedFunctions = {}
+        self._allowedFunctions = {
+            'count': True,
+            'distinct': True,
+        }
 
     def _applyFilter(self, query, filter):
         """
@@ -172,7 +175,12 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         if not self._isFunctionAllowed(fieldOrFunction['func']):
             raise DatabaseConnectorException('Function %s is not allowed' %
                                              fieldOrFunction['func'])
-        return getattr(sqlalchemy.func, fieldOrFunction['func'])(
+        # Determine the function we need to call to apply the function
+        if fieldOrFunction['func'] in ('distinct', ):
+            funcfunc = getattr(sqlalchemy, fieldOrFunction['func'])
+        else:
+            funcfunc = getattr(sqlalchemy.func, fieldOrFunction['func'])
+        return funcfunc(
             *[self._convertFieldOrFunction(entry, True) for entry in
               fieldOrFunction.get('param', fieldOrFunction.get('params', []))])
 

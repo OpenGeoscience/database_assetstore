@@ -67,7 +67,8 @@ class PostgresSAConnector(SQLAlchemyConnector):
         :param funcname: name of the function to check.
         :returns: True is allowed, False is not.
         """
-        if not self._allowedFunctions or not len(self._allowedFunctions):
+        if not getattr(self, '_checkedAllowedFunctions', False):
+            setattr(self, '_checkedAllowedFunctions', True)
             db = self.connect()
             funcs = db.execute(
                 'SELECT lower(proname), provolatile FROM pg_proc;').fetchall()
@@ -83,6 +84,8 @@ class PostgresSAConnector(SQLAlchemyConnector):
                 if (func[1] not in ('i', 's') and
                         self._allowedFunctions.get(func[0], False)):
                     self._allowedFunctions[func[0]] = False
+            self._allowedFunctions['count'] = True
+            self._allowedFunctions['distinct'] = True
         return self._allowedFunctions.get(funcname.lower(), False)
 
     def getFieldInfo(self):
