@@ -102,6 +102,9 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         self.allowSortFunctions = True
         self.allowFilterFunctions = True
         self.initialized = True
+        self.types = {type: getattr(sqlalchemy, type) for type in dir(sqlalchemy)
+                      if isinstance(getattr(sqlalchemy, type),
+                                    sqlalchemy.sql.visitors.VisitableType)}
 
         class Table(object):
             """
@@ -111,6 +114,7 @@ class SQLAlchemyConnector(base.DatabaseConnector):
 
         self.tableClass = Table
         self._allowedFunctions = {
+            'cast': True,
             'count': True,
             'distinct': True,
         }
@@ -175,14 +179,17 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         if not self._isFunctionAllowed(fieldOrFunction['func']):
             raise DatabaseConnectorException('Function %s is not allowed' %
                                              fieldOrFunction['func'])
+        param = fieldOrFunction.get('param', fieldOrFunction.get('params', []))
         # Determine the function we need to call to apply the function
-        if fieldOrFunction['func'] in ('distinct', ):
+        if fieldOrFunction['func'] in ('distinct', 'cast'):
+            if (fieldOrFunction['func'] == 'cast' and len(param) == 2 and
+                    isinstance(param[1], dict) and 'value' in param[1]):
+                param[1]['value'] = self.types.get(param[1]['value'], param[1]['value'])
             funcfunc = getattr(sqlalchemy, fieldOrFunction['func'])
         else:
             funcfunc = getattr(sqlalchemy.func, fieldOrFunction['func'])
         return funcfunc(
-            *[self._convertFieldOrFunction(entry, True) for entry in
-              fieldOrFunction.get('param', fieldOrFunction.get('params', []))])
+            *[self._convertFieldOrFunction(entry, True) for entry in param])
 
     def _isFunctionAllowed(self, proname):
         """
