@@ -94,8 +94,9 @@ def convertSelectDataToGeojson(result, dumpFunc=json.dumps, *args, **kargs):
     data = convertSelectDataToList(result)['data']
 
     def resultFunc():
+        geometryHeader = '{"type":"GeometryCollection","geometries":[\n'
+        featureHeader = '{"type":"FeatureCollection","features":[\n'
         first = True
-        yield '{"type":"GeometryCollection","geometries":[\n'
         for row in data:
             for entry in row:
                 if isinstance(entry, six.string_types):
@@ -110,10 +111,23 @@ def convertSelectDataToGeojson(result, dumpFunc=json.dumps, *args, **kargs):
                     value = None
                 if value:
                     if first:
+                        coll = 'geo'
+                        try:
+                            jsondata = json.loads(value)
+                            if jsondata['type'] == 'Feature':
+                                coll = 'feature'
+                        except Exception:
+                            pass
+                        if coll == 'geo':
+                            yield geometryHeader
+                        else:
+                            yield featureHeader
                         yield value
                         first = False
                     else:
                         yield ',\n' + value
+        if first:
+            yield geometryHeader
         yield '\n]}'
 
     return resultFunc

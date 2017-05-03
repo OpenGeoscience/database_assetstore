@@ -19,6 +19,8 @@
 
 from . import base
 from .sqlalchemydb import SQLAlchemyConnector
+import sqlalchemy
+import sqlalchemy.dialects.postgresql as dialect
 
 
 PostgresOperators = {
@@ -56,6 +58,9 @@ class PostgresSAConnector(SQLAlchemyConnector):
         # dbparams can include values in http://www.postgresql.org/docs/
         #   current/static/libpq-connect.html#LIBPQ-PARAMKEYWORDS
         self.databaseOperators = PostgresOperators
+        self.types = {type: getattr(dialect, type) for type in dir(dialect)
+                      if isinstance(getattr(dialect, type),
+                                    sqlalchemy.sql.visitors.VisitableType)}
 
     def _isFunctionAllowed(self, funcname):
         """
@@ -67,7 +72,8 @@ class PostgresSAConnector(SQLAlchemyConnector):
         :param funcname: name of the function to check.
         :returns: True is allowed, False is not.
         """
-        if not self._allowedFunctions or not len(self._allowedFunctions):
+        if not getattr(self, '_checkedAllowedFunctions', False):
+            setattr(self, '_checkedAllowedFunctions', True)
             db = self.connect()
             funcs = db.execute(
                 'SELECT lower(proname), provolatile FROM pg_proc;').fetchall()
@@ -83,6 +89,9 @@ class PostgresSAConnector(SQLAlchemyConnector):
                 if (func[1] not in ('i', 's') and
                         self._allowedFunctions.get(func[0], False)):
                     self._allowedFunctions[func[0]] = False
+            self._allowedFunctions['cast'] = True
+            self._allowedFunctions['count'] = True
+            self._allowedFunctions['distinct'] = True
         return self._allowedFunctions.get(funcname.lower(), False)
 
     def getFieldInfo(self):
