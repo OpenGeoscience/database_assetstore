@@ -119,14 +119,24 @@ class SQLAlchemyConnector(base.DatabaseConnector):
             'distinct': True,
         }
 
-    def _applyFilter(self, query, filter):
+    def _addFilter(self, filterList, filter):
         """
-        Apply a filter to a SQLAlchemy session query.
+        Add a filter to a list of SQLAlchemy filters.
 
-        :param query: the SQLAlchemy session query.
+        :param filterList: a list of SQLAlchemy filters which is modified.
         :param filter: information on the filter.
-        :return: a filtered session query.
+        :return: the modified list.
         """
+        if 'group' in filter:
+            sublist = []
+            for subfilter in filter['value']:
+                sublist = self._addFilter(sublist, subfilter)
+            if filter['group'] == 'and':
+                filterList.append(sqlalchemy.and_(*sublist))
+            elif filter['group'] == 'or':
+                filterList.append(sqlalchemy.or_(*sublist))
+            return filterList
+        # ##DWM::
         operator = filter['operator']
         operator = base.FilterOperators.get(operator, operator)
         operator = self.databaseOperators.get(operator, operator)
@@ -147,8 +157,8 @@ class SQLAlchemyConnector(base.DatabaseConnector):
             opfunc = field.op(operator)(value)
         if negate:
             opfunc = sqlalchemy.not_(opfunc)
-        query = query.filter(opfunc)
-        return query
+        filterList.append(opfunc)
+        return filterList
 
     def _convertFieldOrFunction(self, fieldOrFunction, preferValue=False):
         """
@@ -377,8 +387,11 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         }
         sess = self.connect(client)
         query = sess.query(self.tableClass)
+        filterQueries = []
         for filter in filters:
-            query = self._applyFilter(query, filter)
+            filterQueries = self._addFilter(filterQueries, filter)
+        if len(filterQueries):
+            query = query.filter(sqlalchemy.and_(*filterQueries))
         if queryProps.get('sort'):
             sortList = []
             for pos in range(len(queryProps['sort'])):
@@ -403,6 +416,10 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         # add_columns puts back just what we want, including expressions.
         query = query.with_entities(*[])
         query = query.add_columns(*columns)
+        import sys  # ##DWM::
+        sys.stderr.write('Query: %s\n' % ' '.join(str(query.statement.compile(
+            bind=sess.get_bind(),
+            compile_kwargs={'literal_binds': True})).split()))  # ##DWM::
         log.info('Query: %s', ' '.join(str(query.statement.compile(
             bind=sess.get_bind(),
             compile_kwargs={'literal_binds': True})).split()))

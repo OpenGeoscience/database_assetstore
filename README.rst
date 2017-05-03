@@ -1,7 +1,19 @@
+==================================================
 Database Assetstore |build-status| |license-badge|
 ==================================================
+
+.. |build-status| image:: https://travis-ci.org/OpenGeoscience/girder_db_items.svg?branch=master
+    :target: https://travis-ci.org/OpenGeoscience/girder_db_items
+    :alt: Build Status
+
+.. |license-badge| image:: https://raw.githubusercontent.com/girder/girder/master/docs/license.png
+    :target: https://pypi.python.org/pypi/girder
+    :alt: License
+
 A Girder_ Plugin
 ----------------
+
+.. _Girder: https://github.com/girder/girder
 
 A Girder plugin to provide access to database tables via assetstores and extra file endpoints.
 
@@ -20,6 +32,8 @@ The ``GET`` ``file/{id}/database/fields`` endpoint reports a list of known field
 The ``GET`` ``file/{id}/database/select`` endpoint performs queries and returns data.  See its documentation for more information.  If the data in the database is actively changing, polling can be used to wait for data to appear.
 
 The ``PUT`` ``file/{id}/database/refresh`` endpoint should be used if the available fields (columns) or functions of a database have changed.
+
+When downloading a file or item in Girder that uses a database assetstore, clients that are unaware of the database options get the results as the default query for the file.  The query can be modified by adding ``extraParameters`` to the download endpoint, so that ``GET`` ``item/{id}/download?extraParameters=<url encoded parameters>`` can be used to change the returned data.  The parameters can be any of the select options.  All of the select parmeters are url-encoded so that they can be passed as a single value to ``extraParameters``.
 
 Select Options
 ==============
@@ -42,7 +56,10 @@ The ``GET`` ``file/{id}/database/select`` endpoint has numerous options:
 
 * *filters* - a JSON list of filters to apply.  Each filter is a list or an object.  If a list, the filter is of the form [(field or object with function or value), (operator), (value or object with field, function, or value)].  If a filter is specified with an object, it needs either "field", "func" and "param", or "lvalue" for the left side, "operator", and either "value" or "rfunc" and "rparam" for the right side.  The operator is optional, and if not specified is the equality test.  The "field" and "value" entries can be objects with "field", "value" or "func" and "param".
 
+  Alternately, a filter can be a group of filters that are combined via either "and" or "or".  A grouping filter must be an object, either with "group" specifying "and" or "or" and "value" containing a list of filters, or with a single key of either "and" or "or" which contains a list of filters.  Grouping filters can be nested to any depth.
+
   Operators are dependant of field datatypes and the database connector that is used.  The following operators are available:
+
   * eq (=)
   * ne (!=, <>)
   * gte (>=, min)
@@ -65,6 +82,8 @@ The ``GET`` ``file/{id}/database/select`` endpoint has numerous options:
   * ``[{"lvalue": "BOSTON", "value": {"field": "town"}}]`` - yet another way to construct the same filter.
   * ``[{"func": "lower", "param": [{"field": "town"}], "value": "boston"}]`` - the lower-case version of the town field must equal "boston".
   * ``[["pop2010", ">", 100000], {"field": "town", "operator": "ne", "value": "BOSTON"}]`` - the population in 2010 must be greater than 100,000, but don't mention Boston.
+  * ``[{"or": [["town", "BOSTON"], ["pop2010", "<", "4000"]]}]`` - the town field must equal "BOSTON" *OR* the population in 2010 must be less than 4000.
+  * ``[{"group: "or", "value": [["town", "BOSTON"], ["pop2010", "<", "4000"]]}]`` - another way to construct the previous filter.
 
 * *format* - data can be returned in a variety of formats:
 
@@ -78,7 +97,7 @@ The ``GET`` ``file/{id}/database/select`` endpoint has numerous options:
 
   * ``jsonlines`` - each row is a stand-alone JSON object.
 
-  * ``geojson`` - any value that could be GeoJSON is combined into a single GeometryCollection object.  Values that are not GeoJSON are ignored.  This is only useful if the database returns GeoJSON strings or dictionaries.  All values in all rows are combined together in order.
+  * ``geojson`` - any value that could be GeoJSON is combined into a single ``GeometryCollection`` or ``FeatureCollection`` object.  The result is a ``FeatureCollection`` if the first row contains a ``Feature``.  Values that are not GeoJSON are ignored.  This is only useful if the database returns GeoJSON strings or dictionaries.  All values in all rows are combined together in order.
 
     For instance, when using a Postgres database with the PostGIS extension, if there is a column with geometry information called ``geom``, asking for the GeoJSON output of the fields ``[{"func": "ST_AsGeoJSON", "param": [{"func": "st_transform", "param": [{"field": "geom"}, 4326]}]}]`` would get a single GeoJSON object of all of the rows in the EPSG:4326 coordinate system.
 
@@ -97,7 +116,9 @@ The ``sort``, ``fields``, and ``filters`` select parameters can use database fun
 
 Functions can be nested -- a function can be used as the parameter of another function.
 
-When using a Postgres database, many Postgres operations are exposed as functions.  For instance, using `float8mul` allows double-precision multiplication.
+When using a SQL database, ``distinct``, ``cast``, and ``count`` are always available as functions.  When ``distinct`` is used as a field, it must be the first field in field list, and other fields usually need to be the result of aggregate functions.  ``cast`` takes two parameters; the first if the data to cast and the second is the name of the datatype, which is typically a string in all capital letters, such as ``INT`` or ``TEXT``.
+
+When using a Postgres database, many Postgres operations are exposed as functions.  For instance, using ``float8mul`` allows double-precision multiplication.
 
 If a function takes a single parameter, the ``param`` value can be a single item.  Otherwise, it is a list of the values for the function.
 
@@ -107,14 +128,4 @@ Here is example of a filter with a nested function (using PostGIS functions):
 
 ``[{"func": "st_intersects", "param": [{"func": "st_setsrid", "param": [{"func": "st_makepoint", "param": [-72, 42.36]}, 4326]}, {"func": "st_transform", "param": [{"field": "geom"}, 4326]}], "operator": "is", "value": true}]``
 
-
-.. _Girder: https://github.com/girder/girder
-
-.. |build-status| image:: https://travis-ci.org/OpenGeoscience/girder_db_items.svg?branch=master
-    :target: https://travis-ci.org/OpenGeoscience/girder_db_items
-    :alt: Build Status
-
-.. |license-badge| image:: https://raw.githubusercontent.com/girder/girder/master/docs/license.png
-    :target: https://pypi.python.org/pypi/girder
-    :alt: License
 

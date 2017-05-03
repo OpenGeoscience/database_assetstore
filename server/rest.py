@@ -151,7 +151,9 @@ def databaseRefresh(self, file, params):
            'list, it contains [(field), (operator), (value)], where '
            '(operator) is optional.  If a dictionary, at least the "field" '
            'and "value" keys must contain values, and "operator" and '
-           '"function" keys can also be added.', required=False)
+           '"function" keys can also be added.  Filters can be grouped by '
+           'using a dictionary with "group" equal to "and" or "or" and '
+           '"value" containing a list of filters.', required=False)
     .param('format', 'The format to return the data (default=list).',
            required=False, enum=list(dbFormatList))
     .param('pretty', 'If true, add whitespace to JSON outputs '
@@ -201,6 +203,7 @@ def databaseRefresh(self, file, params):
     .errorResponse('Unknown filter operator')
     .errorResponse('Filters must be on known fields.')
     .errorResponse('Cannot use operator on field')
+    .errorResponse('Filter group badly formed.')
 )
 @boundHandler()
 @access.cookie

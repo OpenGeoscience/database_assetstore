@@ -229,7 +229,7 @@ def getFilters(conn, fields, filtersValue=None, queryParams={},
                         'operator': operator,
                         'value': queryParams[param]
                     }))
-    return filters
+    return [filter for filter in filters if filter is not None]
 
 
 def getFieldsList(conn, fields=None, fieldsValue=None):
@@ -420,13 +420,15 @@ def validateFilter(conn, fields, filter):
     Validate a filter by ensuring that the field exists, the operator is valid
     for that field's data type, and that any additional properties are allowed.
     Convert the filter into a fully populated dictionary style (one that has at
-    least field, operator, and value).
+    least field, operator, and value).  Filters may also be a dictionary with
+    group (either 'and' or 'or') and value (a list of filters).
 
     :param conn: the database connector.  Used for validating fields.
     :param fields: a list of known fields.
     :param filter: either a dictionary or a list or tuple with two to three
                    components representing (field), [(operator),] (value).
-    :returns filter: the filter in dictionary-style.
+    :returns: the filter in dictionary-style or None if the filter has no
+              effect.
     """
     if isinstance(filter, (list, tuple)):
         if len(filter) < 2 or len(filter) > 3:
@@ -438,6 +440,8 @@ def validateFilter(conn, fields, filter):
             filter = {
                 'field': filter[0], 'operator': filter[1], 'value': filter[2]
             }
+    if filter.get('and') or filter.get('or') or filter.get('group'):
+        return validateFilterGroup(conn, fields, filter)
     if filter.get('operator') not in FilterOperators:
         raise DatabaseQueryException('Unknown filter operator %r' % filter.get(
             'operator'))
@@ -470,3 +474,38 @@ def validateFilter(conn, fields, filter):
         raise DatabaseQueryException('Cannot use %s operator on field %s' % (
             filter['operator'], filter['field']))
     return filter
+
+
+def validateFilterGroup(conn, fields, filter):
+    """
+    Validate a filter group.  The filter must be a dictionary with either 'and'
+    or 'or' with a list of filters, or 'group' with 'and' or 'or' and 'value'
+    with a list of filters.  The result is either a filter, a filter group in
+    the group/value form, or None.
+
+    :param conn: the database connector.  Used for validating fields.
+    :param fields: a list of known fields.
+    :param filter: a dictionary with a filter group.
+    :returns: a filter, filter group, or None.
+    """
+    if filter.get('and'):
+        group = 'and'
+        value = filter['and']
+        bad = filter.get('or') or filter.get('group')
+    elif filter.get('or'):
+        group = 'or'
+        value = filter['or']
+        bad = filter.get('group')
+    else:
+        group = filter['group']
+        value = filter.get('value')
+        bad = group not in ('and', 'or')
+    if bad or not isinstance(value, (list)):
+        raise DatabaseQueryException('Filter group badly formed.')
+    value = [validateFilter(conn, fields, entry) for entry in value]
+    value = [entry for entry in value if entry is not None]
+    if not len(value):
+        return None
+    if len(value) == 1:
+        return value[0]
+    return {'group': group, 'value': value}
