@@ -508,6 +508,15 @@ class AssetstoreTest(base.TestCase):
         func = adapter.downloadFile(
             townFile, headers=False, extraParameters=json.dumps(params))
         self.assertEqual(''.join([part for part in func()]), jsondata)
+        # filters can also be an object or tuple
+        params['filters'] = json.loads(params['filters'])
+        func = adapter.downloadFile(
+            townFile, headers=False, extraParameters=params)
+        self.assertEqual(''.join([part for part in func()]), jsondata)
+        params['filters'] = tuple(params['filters'])
+        func = adapter.downloadFile(
+            townFile, headers=False, extraParameters=params)
+        self.assertEqual(''.join([part for part in func()]), jsondata)
 
     def testAssetstoreFileCopy(self):
         # Create assetstore

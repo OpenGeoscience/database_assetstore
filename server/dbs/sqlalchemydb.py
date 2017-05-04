@@ -136,7 +136,6 @@ class SQLAlchemyConnector(base.DatabaseConnector):
             elif filter['group'] == 'or':
                 filterList.append(sqlalchemy.or_(*sublist))
             return filterList
-        # ##DWM::
         operator = filter['operator']
         operator = base.FilterOperators.get(operator, operator)
         operator = self.databaseOperators.get(operator, operator)
@@ -416,10 +415,6 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         # add_columns puts back just what we want, including expressions.
         query = query.with_entities(*[])
         query = query.add_columns(*columns)
-        import sys  # ##DWM::
-        sys.stderr.write('Query: %s\n' % ' '.join(str(query.statement.compile(
-            bind=sess.get_bind(),
-            compile_kwargs={'literal_binds': True})).split()))  # ##DWM::
         log.info('Query: %s', ' '.join(str(query.statement.compile(
             bind=sess.get_bind(),
             compile_kwargs={'literal_binds': True})).split()))

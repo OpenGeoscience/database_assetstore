@@ -213,6 +213,7 @@ def getFilters(conn, fields, filtersValue=None, queryParams={},
                 filtersList = None
         else:
             filtersList = filtersValue
+        filtersList = validateFilterList(filtersList)
         if not isinstance(filtersList, list):
             raise DatabaseQueryException(
                 'The filters parameter must be a JSON list.')
@@ -440,7 +441,8 @@ def validateFilter(conn, fields, filter):
             filter = {
                 'field': filter[0], 'operator': filter[1], 'value': filter[2]
             }
-    if filter.get('and') or filter.get('or') or filter.get('group'):
+    if (filter.get('and') is not None or filter.get('or') is not None or
+            filter.get('group')):
         return validateFilterGroup(conn, fields, filter)
     if filter.get('operator') not in FilterOperators:
         raise DatabaseQueryException('Unknown filter operator %r' % filter.get(
@@ -488,11 +490,11 @@ def validateFilterGroup(conn, fields, filter):
     :param filter: a dictionary with a filter group.
     :returns: a filter, filter group, or None.
     """
-    if filter.get('and'):
+    if filter.get('and') is not None:
         group = 'and'
         value = filter['and']
-        bad = filter.get('or') or filter.get('group')
-    elif filter.get('or'):
+        bad = filter.get('or') is not None or filter.get('group')
+    elif filter.get('or') is not None:
         group = 'or'
         value = filter['or']
         bad = filter.get('group')
@@ -502,10 +504,30 @@ def validateFilterGroup(conn, fields, filter):
         bad = group not in ('and', 'or')
     if bad or not isinstance(value, (list)):
         raise DatabaseQueryException('Filter group badly formed.')
-    value = [validateFilter(conn, fields, entry) for entry in value]
+    value = [validateFilter(conn, fields, entry)
+             for entry in validateFilterList(value)]
     value = [entry for entry in value if entry is not None]
     if not len(value):
         return None
     if len(value) == 1:
         return value[0]
     return {'group': group, 'value': value}
+
+
+def validateFilterList(filters):
+    """
+    Check if an object is a list or tuple of filters.  If it is a single
+    filter, convert it to a list.
+
+    :param filters: a list of filters, a single filter, or None.
+    :return filters: a list of filters or None if this cannot be a converted to
+        a list of filters.
+    """
+    if filters is None:
+        return
+    if isinstance(filters, tuple):
+        filters = list(filters)
+    if (not isinstance(filters, list) or (
+            len(filters) and isinstance(filters[0], six.string_types))):
+        filters = [filters]
+    return filters

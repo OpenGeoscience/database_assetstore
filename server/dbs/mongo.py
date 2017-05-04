@@ -80,7 +80,7 @@ class MongoConnector(base.DatabaseConnector):
             subclauses = []
             for subfilter in filter['value']:
                 subclauses = self._addFilter(subclauses, subfilter)
-            clauses.append({'$' + filter['group'], subclauses})
+            clauses.append({'$' + filter['group']: subclauses})
             return clauses
         operator = filter['operator']
         operator = base.FilterOperators.get(operator)

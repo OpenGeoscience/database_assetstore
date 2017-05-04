@@ -58,6 +58,8 @@ The ``GET`` ``file/{id}/database/select`` endpoint has numerous options:
 
   Alternately, a filter can be a group of filters that are combined via either "and" or "or".  A grouping filter must be an object, either with "group" specifying "and" or "or" and "value" containing a list of filters, or with a single key of either "and" or "or" which contains a list of filters.  Grouping filters can be nested to any depth.
 
+  A single filter may be used instead of a list of filters as the main object or as the value parameter of a filter group, but only if the single filter is itself and object or a list whose first eleemnt is a string.
+
   Operators are dependant of field datatypes and the database connector that is used.  The following operators are available:
 
   * eq (=)
