@@ -31,7 +31,7 @@ from girder.utility import assetstore_utilities
 from girder.utility.progress import ProgressContext
 
 from . import assetstore, dbs
-from .assetstore import DB_INFO_KEY
+from .assetstore import DB_INFO_KEY, getTableList
 from .query import DatabaseQueryException, dbFormatList, queryDatabase, \
     preferredFormat
 
@@ -247,23 +247,11 @@ class DatabaseAssetstoreResource(Resource):
         self.route('GET', (':id', 'tables'), self.getTables)
         self.route('PUT', (':id', 'import'), self.importData)
 
-    def _getTableList(self, assetstore):
-        """
-        Given an assetstore, return the list of known tables or collections.
-
-        :param assetstore: the assetstore document.
-        :returns: a list of known tables.
-        """
-        cls = dbs.getDBConnectorClass(assetstore['database']['dbtype'])
-        return cls.getTableList(
-            assetstore['database']['uri'],
-            dbparams=assetstore['database'].get('dbparams', {}))
-
     def _parseTableList(self, tables, assetstore):
         """
-        Given a list which can include plain strings and objects with
-        optionally database, name, and table, find the set of matching
-        databases and tables from the assetstore.
+        Given a list which can include plain strings and objects with optional
+        database, name, and table, find the set of matching databases and
+        tables from the assetstore.
 
         :param tables: the input list of table names, '', objects with
             database and possibly name keys, and objects with a table key.
@@ -278,7 +266,7 @@ class DatabaseAssetstoreResource(Resource):
         tables = [table for table in tables if not table.get('table')]
         if not len(tables) and not all:
             return results
-        tableList = self._getTableList(assetstore)
+        tableList = getTableList(assetstore)
         defaultDatabase = dbs.databaseFromUri(assetstore['database']['uri'])
         for database in tableList:
             for tableEntry in database['tables']:
@@ -303,11 +291,14 @@ class DatabaseAssetstoreResource(Resource):
         .notes('Only site administrators may use this endpoint.')
         .param('id', 'The ID of the assetstore representing the Database.',
                paramType='path')
+        .param('internal', 'True to include tables from the database '
+               'internals, such as postgres\'s information_schema.',
+               required=False, default=False, dataType='boolean')
         .errorResponse()
         .errorResponse('You are not an administrator.', 403)
     )
     def getTables(self, assetstore, params):
-        return self._getTableList(assetstore)
+        return getTableList(assetstore, params.get('internal'))
 
     @access.admin
     @loadmodel(model='assetstore')

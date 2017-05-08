@@ -323,13 +323,14 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         return fields
 
     @staticmethod
-    def getTableList(url, dbparams={}, **kwargs):
+    def getTableList(url, internalTables=False, dbparams={}, **kwargs):
         """
         Get a list of known databases, each of which has a list of known tables
         from the database.  This is of the form [{'database': (database),
         'tables': [{'schema': (schema), 'table': (table 1)}, ...]}]
 
         :param url: url to connect to the database.
+        :param internaltables: True to return tables about the database itself.
         :param dbparams: optional parameters to send to the connection.
         :returns: A list of known tables.
         """
@@ -345,6 +346,8 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         databaseName = base.databaseFromUri(url)
         results = [{'database': databaseName, 'tables': tables}]
         for schema in schemas:
+            if not internalTables and schema.lower() == 'information_schema':
+                continue
             if schema != defaultSchema:
                 tables = [{'name': '%s.%s' % (schema, table),
                            'table': table, 'schema': schema}

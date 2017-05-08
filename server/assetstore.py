@@ -27,8 +27,7 @@ from girder.models.model_base import GirderException, ValidationException
 from girder.utility.abstract_assetstore_adapter import AbstractAssetstoreAdapter
 from girder.utility.model_importer import ModelImporter
 
-from .dbs import getDBConnectorClassFromDialect, databaseFromUri, \
-    getDBConnectorClass
+from . import dbs
 from .query import dbFormatList, queryDatabase, preferredFormat
 
 
@@ -52,7 +51,7 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
             raise ValidationException('Missing uri field.')
         dbtype = info.get('dbtype')
         dialect = uri.split('://', 1)[0] if '://' in uri else dbtype
-        validatedDialect, validatedDbtype = getDBConnectorClassFromDialect(
+        validatedDialect, validatedDbtype = dbs.getDBConnectorClassFromDialect(
             dialect, dbtype)
         if validatedDbtype is None:
             if dbtype:
@@ -64,8 +63,8 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
         if validatedDialect:
             info['uri'] = '%s://%s' % (validatedDialect, info['uri'])
         info['dbtype'] = validatedDbtype
-        connClass = getDBConnectorClass(info['dbtype'])
-        if connClass.databaseNameRequired and not databaseFromUri(info['uri']):
+        connClass = dbs.getDBConnectorClass(info['dbtype'])
+        if connClass.databaseNameRequired and not dbs.databaseFromUri(info['uri']):
             raise ValidationException(
                 'The specified database uri must include the database name.')
 
@@ -277,11 +276,14 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
         :type progress: :py:class:`girder.utility.progress.ProgressContext`
         :param user: The Girder user performing the import.
         :type user: dict or None
+        :return: a list of objects, each of which has an item and file entry
+            with the items and files that were imported.
         """
-        defaultDatabase = databaseFromUri(self.assetstore['database']['uri'])
+        defaultDatabase = dbs.databaseFromUri(self.assetstore['database']['uri'])
         itemModel = self.model('item')
         fileModel = self.model('file')
         folderModel = self.model('folder')
+        response = []
         for table in params['tables']:
             if isinstance(table, six.string_types):
                 dbinfo = {'table': table}
@@ -353,6 +355,59 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
                 pass
             # Now save the new file
             fileModel.save(file)
+            response.append({'item': item, 'file': file})
+        return response
+
+    def getTableList(self, internalTables=False):
+        """
+        Return the list of known tables or collections.
+
+        :param internalTables: True to include database internal tables (such
+            as information_schema tables).
+        :returns: a list of known tables.
+        """
+        return getTableList(self.assetstore, internalTables)
+
+    def getDBConnectorForTable(self, table=None, overrideDbinfo={}):
+        """
+        Get a database connector for a specific table or otherwise override the
+        adapters database info.
+
+        :param table: table name.  This is used as the table and schema for the
+            dbinfo.  If there is no period in the table name, only the table
+            is changed.
+        :param overrideDbinfo: extra information that overrides the adapter's
+            default information.
+        """
+        dbinfo = {
+            'type': self.assetstore['database']['dbtype'],
+            'url': self.assetstore['database']['uri'],
+        }
+        schema = None
+        if table and '.' in table:
+            schema, table = table.split('.', 1)
+        if table:
+            dbinfo['table'] = dbinfo['collection'] = table
+        if schema:
+            dbinfo['schema'] = schema
+        dbinfo.update(overrideDbinfo)
+        connClass = dbs.getDBConnectorClass(dbinfo.get('type'))
+        conn = connClass(**dbinfo)
+        return conn
+
+    def queryDatabase(self, connector, params):
+        """
+        Given a connector to this adapter, query the database.
+
+        :param connector: a connector that is derived from the
+            DatabaseConnector class.
+        :param params: query parameters.  See the select endpoint for
+            documentation.
+        :returns: a result function that returns a generator that yields the
+            results, or None for failed.
+        :returns: the mime type of the results, or None for failed.
+        """
+        return queryDatabase(connector, None, params)
 
 
 def getDbInfoForFile(file, assetstore=None):
@@ -408,6 +463,22 @@ def getQueryParamsForFile(file, setBlanks=False):
     return params
 
 
+def getTableList(assetstore, internalTables=False):
+    """
+    Given an assetstore, return the list of known tables or collections.
+
+    :param assetstore: the assetstore document.
+    :param internalTables: True to include database internal tables (such as
+        information_schema tables).
+    :returns: a list of known tables.
+    """
+    cls = dbs.getDBConnectorClass(assetstore['database']['dbtype'])
+    return cls.getTableList(
+        assetstore['database']['uri'],
+        internalTables=internalTables,
+        dbparams=assetstore['database'].get('dbparams', {}))
+
+
 def validateFile(file):
     """
     If a file document contains the DB_INFO_KEY, check if it is in a database
@@ -428,7 +499,7 @@ def validateFile(file):
         raise ValidationException(
             'File database information entry must have a non-blank table '
             'value.')
-    if (not databaseFromUri(assetstore['database']['uri']) and
+    if (not dbs.databaseFromUri(assetstore['database']['uri']) and
             not file[DB_INFO_KEY].get('database')):
         raise ValidationException(
             'File database information must have a non-blank database value '

@@ -184,7 +184,7 @@ class MongoConnector(base.DatabaseConnector):
         return self.fieldInfo
 
     @staticmethod
-    def getTableList(url, **kwargs):
+    def getTableList(url, internalTables=False, **kwargs):
         """
         Get a list of known databases, each of which has a list of known
         collections from the database.  This is of the form [{'database':
@@ -196,6 +196,8 @@ class MongoConnector(base.DatabaseConnector):
         :returns: A list of known tables.
 
         :param url: url to connect to the database.
+        :param internaltables: True to return tables about the database itself.
+            Ignored for Mongo.
         :returns: A list of known collections.
         """
         conn = MongoClient(url)

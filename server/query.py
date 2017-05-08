@@ -10,7 +10,7 @@ from six.moves import range
 
 from girder.models.model_base import GirderException
 
-from .dbs import getDBConnector, FilterOperators, DatabaseConnectorException
+from . import dbs
 
 
 dbFormatList = collections.OrderedDict([
@@ -21,6 +21,8 @@ dbFormatList = collections.OrderedDict([
     ('jsonlines', 'text/plain'),
     # http,//www.iana.org/assignments/media-types/application/vnd.geo+json
     ('geojson', 'application/vnd.geo+json'),
+    ('rawdict', ''),
+    ('rawlist', ''),
 ])
 
 
@@ -189,6 +191,42 @@ def convertSelectDataToList(result, *args, **kargs):
     return result
 
 
+def convertSelectDataToRawdict(result, *args, **kargs):
+    """
+    Convert data in list format to dictionary format.  The column names are
+    used as the keys for each row.
+
+    :param result: the initial select results.  This can be altered.
+    :returns: a function that outputs aa generator.
+    """
+    if result['format'] != 'dict':
+        result['data'] = convertSelectDataToJson(result)
+        result['format'] = 'dict'
+
+    def resultFunc():
+        for row in result['data']:
+            yield row
+
+    return resultFunc
+
+
+def convertSelectDataToRawlist(result, *args, **kargs):
+    """
+    Convert data in list format to dictionary format.  The column names are
+    used as the keys for each row.
+
+    :param result: the initial select results.  This can be altered.
+    :returns: a function that outputs aa generator.
+    """
+    result = convertSelectDataToList(result)
+
+    def resultFunc():
+        for row in result['data']:
+            yield row
+
+    return resultFunc
+
+
 def getFilters(conn, fields, filtersValue=None, queryParams={},
                reservedParameters=[]):
     """
@@ -222,7 +260,7 @@ def getFilters(conn, fields, filtersValue=None, queryParams={},
     if queryParams:
         for fieldEntry in fields:
             field = fieldEntry['name']
-            for operator in FilterOperators:
+            for operator in dbs.FilterOperators:
                 param = field + ('' if operator is None else '_' + operator)
                 if param in queryParams and param not in reservedParameters:
                     filters.append(validateFilter(conn, fields, {
@@ -341,22 +379,27 @@ def preferredFormat(format):
     return format
 
 
-def queryDatabase(id, dbinfo, params):
+def queryDatabase(idOrConnector, dbinfo, params):
     """
     Query a database.
 
-    :param id: an id used to cache the DB connector.
+    :param idOrConnector: either an id used to cache the DB connector, or a
+        connector that is derived from the DatabaseConnector class.
     :param dbinfo: a dictionary of connection information for the db.  Needs
-        type, url, and either table or connection.
+        type, url, and either table or connection.  Ignored if a connector is
+        provided.
     :param params: query parameters.  See the select endpoint for
         documentation.
     :returns: a result function that returns a generator that yields the
         results, or None for failed.
     :returns: the mime type of the results, or None for failed.
     """
-    conn = getDBConnector(id, dbinfo)
+    if isinstance(idOrConnector, dbs.DatabaseConnector):
+        conn = idOrConnector
+    else:
+        conn = dbs.getDBConnector(idOrConnector, dbinfo)
     if not conn:
-        raise DatabaseConnectorException('Failed to connect to database.')
+        raise dbs.DatabaseConnectorException('Failed to connect to database.')
     fields = conn.getFieldInfo()
     queryProps = {
         'limit':
@@ -444,10 +487,10 @@ def validateFilter(conn, fields, filter):
     if (filter.get('and') is not None or filter.get('or') is not None or
             filter.get('group')):
         return validateFilterGroup(conn, fields, filter)
-    if filter.get('operator') not in FilterOperators:
+    if filter.get('operator') not in dbs.FilterOperators:
         raise DatabaseQueryException('Unknown filter operator %r' % filter.get(
             'operator'))
-    filter['operator'] = FilterOperators[filter.get('operator')]
+    filter['operator'] = dbs.FilterOperators[filter.get('operator')]
     if 'field' not in filter and 'lvalue' in filter:
         filter['field'] = {'value': filter['lvalue']}
     if 'field' not in filter and ('func' in filter or 'lfunc' in filter):

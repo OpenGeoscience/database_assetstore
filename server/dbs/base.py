@@ -212,7 +212,7 @@ class DatabaseConnector(object):
         return []
 
     @staticmethod
-    def getTableList(url, **kwargs):
+    def getTableList(url, internalTables=False, **kwargs):
         """
         Get a list of known databases, each of which has a list of known tables
         from the database.  This is of the form [{'database': (database 1),
@@ -221,6 +221,7 @@ class DatabaseConnector(object):
         and may contain additonal connection information, such as schema.
 
         :param url: url to connect to the database.
+        :param internaltables: True to return tables about the database itself.
         :returns: A list of known tables.
         """
         return []
