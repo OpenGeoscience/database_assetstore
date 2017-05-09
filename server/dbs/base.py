@@ -59,14 +59,17 @@ FilterOperators = {
     'is_not': 'not_is',
 }
 DatatypeOperators = {
-    'array': {'in', 'not_in'},
-    'boolean': {'eq', 'ne', 'in', 'not_in'},
-    'date': {'eq', 'ne', 'gte', 'gt', 'lt', 'lte', 'in', 'not_in'},
-    'duration': {'eq', 'ne', 'gte', 'gt', 'lt', 'lte', 'in', 'not_in'},
-    'enum': {'eq', 'ne', 'in', 'not_in'},
-    'number': {'eq', 'ne', 'gte', 'gt', 'lt', 'lte', 'in', 'not_in'},
+    'array': {'in', 'not_in', 'is', 'not_is'},
+    'boolean': {'eq', 'ne', 'in', 'not_in', 'is', 'not_is'},
+    'date': {'eq', 'ne', 'gte', 'gt', 'lt', 'lte', 'in', 'not_in', 'is',
+             'not_is'},
+    'duration': {'eq', 'ne', 'gte', 'gt', 'lt', 'lte', 'in', 'not_in', 'is',
+                 'not_is'},
+    'enum': {'eq', 'ne', 'in', 'not_in', 'is', 'not_is'},
+    'number': {'eq', 'ne', 'gte', 'gt', 'lt', 'lte', 'in', 'not_in', 'is',
+               'not_is'},
     'string': {'eq', 'ne', 'gte', 'gt', 'lt', 'lte', 'in', 'not_in', 'regex',
-               'not_regex', 'search', 'not_search'},
+               'not_regex', 'search', 'not_search', 'is', 'not_is'},
 }
 
 _connectorClasses = {}

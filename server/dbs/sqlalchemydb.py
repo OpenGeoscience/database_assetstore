@@ -151,6 +151,9 @@ class SQLAlchemyConnector(base.DatabaseConnector):
             values = [self._convertFieldOrFunction(value, True)
                       for value in values]
             opfunc = field.in_(values)
+        elif operator == 'is':
+            value = self._convertFieldOrFunction(filter['value'], True)
+            opfunc = field.is_(value)
         else:
             value = self._convertFieldOrFunction(filter['value'], True)
             opfunc = field.op(operator)(value)

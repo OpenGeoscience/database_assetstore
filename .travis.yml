@@ -85,6 +85,8 @@ script:
     # Load postgres and show that we loaded the database properly
     - gunzip -c data/plugins/database_assetstore/testdb.sql.gz | psql -U postgres sampledb
     - psql -U postgres -h 127.0.0.1 sampledb -c "SELECT table_type,table_name FROM information_schema.tables WHERE table_schema='public' order by table_name;" | cat
+    # Make sure we have a row with a null value
+    - psql -U postgres -h 127.0.0.1 sampledb -c "update towns set fourcolor=NULL where town='ABINGTON';" | cat
     # Load mongo and show that we loaded the database properly
     - bunzip2 -c data/plugins/database_assetstore/mongodb.permits.json.bz2 | mongoimport --db boston --collection permits
     - mongo boston --eval 'db.permits.count()'

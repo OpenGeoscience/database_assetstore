@@ -906,6 +906,20 @@ class FileTest(base.TestCase):
         self.assertEqual(resp.json['data'][0][0], 'ABINGTON')
         self.assertEqual(resp.json['data'][1][0], 'BOSTON')
         self.assertEqual(resp.json['data'][2][0], 'GOSNOLD')
+        # is None
+        params['filters'] = json.dumps(['fourcolor', 'is', None])
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 1)
+        self.assertEqual(resp.json['data'][0][0], 'ABINGTON')
+        # not_is None
+        params['filters'] = json.dumps(['fourcolor', 'isnot', None])
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 5)
+        self.assertEqual(resp.json['data'][0][0], 'ACTON')
 
     def testFileDatabaseSelectFormats(self):
         fileId, fileId2, fileId3 = self._setupDbFiles()
