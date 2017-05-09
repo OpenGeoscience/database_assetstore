@@ -67,7 +67,21 @@ class MongoConnector(base.DatabaseConnector):
 
         self.initialized = True
 
-    def _applyFilter(self, clauses, filter):
+    def _addFilter(self, clauses, filter):
+        """
+        Add a filter to a list of clauses.
+
+        :param clauses: a list which is modified.
+        :param filter: the filter to add.  This needs to be a dictionary with
+            field, operator, and value or with group and value.
+        :return: the list of clauses.
+        """
+        if 'group' in filter:
+            subclauses = []
+            for subfilter in filter['value']:
+                subclauses = self._addFilter(subclauses, subfilter)
+            clauses.append({'$' + filter['group']: subclauses})
+            return clauses
         operator = filter['operator']
         operator = base.FilterOperators.get(operator)
 
@@ -112,7 +126,7 @@ class MongoConnector(base.DatabaseConnector):
 
         filterQueryClauses = []
         for filt in filters:
-            filterQueryClauses = self._applyFilter(filterQueryClauses, filt)
+            filterQueryClauses = self._addFilter(filterQueryClauses, filt)
 
         opts = {}
         for k, v in six.iteritems(queryProps):
@@ -170,7 +184,7 @@ class MongoConnector(base.DatabaseConnector):
         return self.fieldInfo
 
     @staticmethod
-    def getTableList(url, **kwargs):
+    def getTableList(url, internalTables=False, **kwargs):
         """
         Get a list of known databases, each of which has a list of known
         collections from the database.  This is of the form [{'database':
@@ -182,6 +196,8 @@ class MongoConnector(base.DatabaseConnector):
         :returns: A list of known tables.
 
         :param url: url to connect to the database.
+        :param internaltables: True to return tables about the database itself.
+            Ignored for Mongo.
         :returns: A list of known collections.
         """
         conn = MongoClient(url)

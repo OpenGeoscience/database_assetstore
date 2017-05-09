@@ -119,14 +119,23 @@ class SQLAlchemyConnector(base.DatabaseConnector):
             'distinct': True,
         }
 
-    def _applyFilter(self, query, filter):
+    def _addFilter(self, filterList, filter):
         """
-        Apply a filter to a SQLAlchemy session query.
+        Add a filter to a list of SQLAlchemy filters.
 
-        :param query: the SQLAlchemy session query.
+        :param filterList: a list of SQLAlchemy filters which is modified.
         :param filter: information on the filter.
-        :return: a filtered session query.
+        :return: the modified list.
         """
+        if 'group' in filter:
+            sublist = []
+            for subfilter in filter['value']:
+                sublist = self._addFilter(sublist, subfilter)
+            if filter['group'] == 'and':
+                filterList.append(sqlalchemy.and_(*sublist))
+            elif filter['group'] == 'or':
+                filterList.append(sqlalchemy.or_(*sublist))
+            return filterList
         operator = filter['operator']
         operator = base.FilterOperators.get(operator, operator)
         operator = self.databaseOperators.get(operator, operator)
@@ -142,13 +151,16 @@ class SQLAlchemyConnector(base.DatabaseConnector):
             values = [self._convertFieldOrFunction(value, True)
                       for value in values]
             opfunc = field.in_(values)
+        elif operator == 'is':
+            value = self._convertFieldOrFunction(filter['value'], True)
+            opfunc = field.is_(value)
         else:
             value = self._convertFieldOrFunction(filter['value'], True)
             opfunc = field.op(operator)(value)
         if negate:
             opfunc = sqlalchemy.not_(opfunc)
-        query = query.filter(opfunc)
-        return query
+        filterList.append(opfunc)
+        return filterList
 
     def _convertFieldOrFunction(self, fieldOrFunction, preferValue=False):
         """
@@ -314,13 +326,14 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         return fields
 
     @staticmethod
-    def getTableList(url, dbparams={}, **kwargs):
+    def getTableList(url, internalTables=False, dbparams={}, **kwargs):
         """
         Get a list of known databases, each of which has a list of known tables
         from the database.  This is of the form [{'database': (database),
         'tables': [{'schema': (schema), 'table': (table 1)}, ...]}]
 
         :param url: url to connect to the database.
+        :param internaltables: True to return tables about the database itself.
         :param dbparams: optional parameters to send to the connection.
         :returns: A list of known tables.
         """
@@ -336,6 +349,8 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         databaseName = base.databaseFromUri(url)
         results = [{'database': databaseName, 'tables': tables}]
         for schema in schemas:
+            if not internalTables and schema.lower() == 'information_schema':
+                continue
             if schema != defaultSchema:
                 tables = [{'name': '%s.%s' % (schema, table),
                            'table': table, 'schema': schema}
@@ -377,8 +392,11 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         }
         sess = self.connect(client)
         query = sess.query(self.tableClass)
+        filterQueries = []
         for filter in filters:
-            query = self._applyFilter(query, filter)
+            filterQueries = self._addFilter(filterQueries, filter)
+        if len(filterQueries):
+            query = query.filter(sqlalchemy.and_(*filterQueries))
         if queryProps.get('sort'):
             sortList = []
             for pos in range(len(queryProps['sort'])):

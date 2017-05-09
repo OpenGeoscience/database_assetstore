@@ -680,13 +680,20 @@ class FileTest(base.TestCase):
         resp = self.request(path='/file/%s/database/select' % (
             fileId, ), user=self.user, params=params)
         self.assertStatus(resp, 400)
-        self.assertIn('must be a JSON list', resp.json['message'])
+        self.assertIn('must specify a field or func', resp.json['message'])
         params['filters'] = json.dumps([{'town': 'BOSTON'}])
         resp = self.request(path='/file/%s/database/select' % (
             fileId, ), user=self.user, params=params)
         self.assertStatus(resp, 400)
         self.assertIn('must specify a field or func', resp.json['message'])
         params['filters'] = json.dumps([{'field': 'town', 'value': 'BOSTON'}])
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 1)
+        self.assertEqual(resp.json['data'][0][0], 'BOSTON')
+        # Test a single filter
+        params['filters'] = json.dumps({'field': 'town', 'value': 'BOSTON'})
         resp = self.request(path='/file/%s/database/select' % (
             fileId, ), user=self.user, params=params)
         self.assertStatusOk(resp)
@@ -753,6 +760,13 @@ class FileTest(base.TestCase):
         self.assertStatus(resp, 400)
         self.assertIn('must have two or three components',
                       resp.json['message'])
+        # Test a single filter as a list
+        params['filters'] = json.dumps(['town', 'gt', 'BOS'])
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 5)
+        self.assertEqual(resp.json['data'][0][0], 'BOSTON')
         # Fail on an unknown field
         params['filters'] = json.dumps([['unknown', 'BOSTON']])
         resp = self.request(path='/file/%s/database/select' % (
@@ -801,6 +815,111 @@ class FileTest(base.TestCase):
         self.assertStatusOk(resp)
         self.assertEqual(len(resp.json['data']), 1)
         self.assertEqual(resp.json['data'][0][0], 'RUTLAND')
+        # Test nested filters
+        params['filters'] = json.dumps([{
+            'group': 'not',
+            'value': [['pop2010', '<', '100'], ['pop2010', '>', '400000']]}])
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params=params)
+        self.assertStatus(resp, 400)
+        self.assertIn('Filter group badly formed', resp.json['message'])
+        params['filters'] = json.dumps([{'or': [
+            ['pop2010', '<', '100'], ['pop2010', '>', '400000']]}])
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 2)
+        self.assertEqual(resp.json['data'][0][0], 'BOSTON')
+        self.assertEqual(resp.json['data'][1][0], 'GOSNOLD')
+        params['filters'] = json.dumps([{
+            'group': 'or',
+            'value': [['pop2010', '<', '100'], ['pop2010', '>', '400000']]}])
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 2)
+        self.assertEqual(resp.json['data'][0][0], 'BOSTON')
+        self.assertEqual(resp.json['data'][1][0], 'GOSNOLD')
+        params['filters'] = json.dumps(
+            [['pop2010', '<', '4000'], ['pop2010', '>', '3700']])
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 2)
+        self.assertEqual(resp.json['data'][0][0], 'TISBURY')
+        self.assertEqual(resp.json['data'][1][0], 'WEST BROOKFIELD')
+        params['filters'] = json.dumps({
+            'group': 'and',
+            'value': [['pop2010', '<', '4000'], ['pop2010', '>', '3700']]})
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 2)
+        self.assertEqual(resp.json['data'][0][0], 'TISBURY')
+        self.assertEqual(resp.json['data'][1][0], 'WEST BROOKFIELD')
+        params['filters'] = json.dumps({
+            'and': [['pop2010', '<', '4000'], ['pop2010', '>', '3700']]})
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 2)
+        self.assertEqual(resp.json['data'][0][0], 'TISBURY')
+        self.assertEqual(resp.json['data'][1][0], 'WEST BROOKFIELD')
+        params['filters'] = json.dumps({'or': ['town', 'BOSTON']})
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 1)
+        self.assertEqual(resp.json['data'][0][0], 'BOSTON')
+        params['filters'] = json.dumps({'or': []})
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 5)
+        # test double nesting
+        params['filters'] = json.dumps([{
+            'group': 'or',
+            'value': [
+                ['pop2010', '<', '100'],
+                ['pop2010', '>', '400000'],
+                {'and': [['pop2010', '<', '4000'], ['pop2010', '>', '3700']]},
+            ]}])
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 4)
+        self.assertEqual(resp.json['data'][0][0], 'BOSTON')
+        self.assertEqual(resp.json['data'][1][0], 'GOSNOLD')
+        self.assertEqual(resp.json['data'][2][0], 'TISBURY')
+        self.assertEqual(resp.json['data'][3][0], 'WEST BROOKFIELD')
+        params['filters'] = json.dumps([{
+            'group': 'or',
+            'value': [
+                ['pop2010', '<', '100'],
+                ['pop2010', '>', '400000'],
+                {'or': ['town', 'ABINGTON']},
+            ]}])
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 3)
+        self.assertEqual(resp.json['data'][0][0], 'ABINGTON')
+        self.assertEqual(resp.json['data'][1][0], 'BOSTON')
+        self.assertEqual(resp.json['data'][2][0], 'GOSNOLD')
+        # is None
+        params['filters'] = json.dumps(['fourcolor', 'is', None])
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 1)
+        self.assertEqual(resp.json['data'][0][0], 'ABINGTON')
+        # not_is None
+        params['filters'] = json.dumps(['fourcolor', 'isnot', None])
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 5)
+        self.assertEqual(resp.json['data'][0][0], 'ACTON')
 
     def testFileDatabaseSelectFormats(self):
         fileId, fileId2, fileId3 = self._setupDbFiles()

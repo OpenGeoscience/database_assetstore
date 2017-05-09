@@ -10,7 +10,7 @@ from six.moves import range
 
 from girder.models.model_base import GirderException
 
-from .dbs import getDBConnector, FilterOperators, DatabaseConnectorException
+from . import dbs
 
 
 dbFormatList = collections.OrderedDict([
@@ -21,6 +21,8 @@ dbFormatList = collections.OrderedDict([
     ('jsonlines', 'text/plain'),
     # http,//www.iana.org/assignments/media-types/application/vnd.geo+json
     ('geojson', 'application/vnd.geo+json'),
+    ('rawdict', ''),
+    ('rawlist', ''),
 ])
 
 
@@ -189,6 +191,42 @@ def convertSelectDataToList(result, *args, **kargs):
     return result
 
 
+def convertSelectDataToRawdict(result, *args, **kargs):
+    """
+    Convert data in list format to dictionary format.  The column names are
+    used as the keys for each row.
+
+    :param result: the initial select results.  This can be altered.
+    :returns: a function that outputs aa generator.
+    """
+    if result['format'] != 'dict':
+        result['data'] = convertSelectDataToJson(result)
+        result['format'] = 'dict'
+
+    def resultFunc():
+        for row in result['data']:
+            yield row
+
+    return resultFunc
+
+
+def convertSelectDataToRawlist(result, *args, **kargs):
+    """
+    Convert data in list format to dictionary format.  The column names are
+    used as the keys for each row.
+
+    :param result: the initial select results.  This can be altered.
+    :returns: a function that outputs aa generator.
+    """
+    result = convertSelectDataToList(result)
+
+    def resultFunc():
+        for row in result['data']:
+            yield row
+
+    return resultFunc
+
+
 def getFilters(conn, fields, filtersValue=None, queryParams={},
                reservedParameters=[]):
     """
@@ -213,6 +251,7 @@ def getFilters(conn, fields, filtersValue=None, queryParams={},
                 filtersList = None
         else:
             filtersList = filtersValue
+        filtersList = validateFilterList(filtersList)
         if not isinstance(filtersList, list):
             raise DatabaseQueryException(
                 'The filters parameter must be a JSON list.')
@@ -221,7 +260,7 @@ def getFilters(conn, fields, filtersValue=None, queryParams={},
     if queryParams:
         for fieldEntry in fields:
             field = fieldEntry['name']
-            for operator in FilterOperators:
+            for operator in dbs.FilterOperators:
                 param = field + ('' if operator is None else '_' + operator)
                 if param in queryParams and param not in reservedParameters:
                     filters.append(validateFilter(conn, fields, {
@@ -229,7 +268,7 @@ def getFilters(conn, fields, filtersValue=None, queryParams={},
                         'operator': operator,
                         'value': queryParams[param]
                     }))
-    return filters
+    return [filter for filter in filters if filter is not None]
 
 
 def getFieldsList(conn, fields=None, fieldsValue=None):
@@ -340,22 +379,27 @@ def preferredFormat(format):
     return format
 
 
-def queryDatabase(id, dbinfo, params):
+def queryDatabase(idOrConnector, dbinfo, params):
     """
     Query a database.
 
-    :param id: an id used to cache the DB connector.
+    :param idOrConnector: either an id used to cache the DB connector, or a
+        connector that is derived from the DatabaseConnector class.
     :param dbinfo: a dictionary of connection information for the db.  Needs
-        type, url, and either table or connection.
+        type, url, and either table or connection.  Ignored if a connector is
+        provided.
     :param params: query parameters.  See the select endpoint for
         documentation.
     :returns: a result function that returns a generator that yields the
         results, or None for failed.
     :returns: the mime type of the results, or None for failed.
     """
-    conn = getDBConnector(id, dbinfo)
+    if isinstance(idOrConnector, dbs.DatabaseConnector):
+        conn = idOrConnector
+    else:
+        conn = dbs.getDBConnector(idOrConnector, dbinfo)
     if not conn:
-        raise DatabaseConnectorException('Failed to connect to database.')
+        raise dbs.DatabaseConnectorException('Failed to connect to database.')
     fields = conn.getFieldInfo()
     queryProps = {
         'limit':
@@ -420,13 +464,15 @@ def validateFilter(conn, fields, filter):
     Validate a filter by ensuring that the field exists, the operator is valid
     for that field's data type, and that any additional properties are allowed.
     Convert the filter into a fully populated dictionary style (one that has at
-    least field, operator, and value).
+    least field, operator, and value).  Filters may also be a dictionary with
+    group (either 'and' or 'or') and value (a list of filters).
 
     :param conn: the database connector.  Used for validating fields.
     :param fields: a list of known fields.
     :param filter: either a dictionary or a list or tuple with two to three
                    components representing (field), [(operator),] (value).
-    :returns filter: the filter in dictionary-style.
+    :returns: the filter in dictionary-style or None if the filter has no
+              effect.
     """
     if isinstance(filter, (list, tuple)):
         if len(filter) < 2 or len(filter) > 3:
@@ -438,10 +484,13 @@ def validateFilter(conn, fields, filter):
             filter = {
                 'field': filter[0], 'operator': filter[1], 'value': filter[2]
             }
-    if filter.get('operator') not in FilterOperators:
+    if (filter.get('and') is not None or filter.get('or') is not None or
+            filter.get('group')):
+        return validateFilterGroup(conn, fields, filter)
+    if filter.get('operator') not in dbs.FilterOperators:
         raise DatabaseQueryException('Unknown filter operator %r' % filter.get(
             'operator'))
-    filter['operator'] = FilterOperators[filter.get('operator')]
+    filter['operator'] = dbs.FilterOperators[filter.get('operator')]
     if 'field' not in filter and 'lvalue' in filter:
         filter['field'] = {'value': filter['lvalue']}
     if 'field' not in filter and ('func' in filter or 'lfunc' in filter):
@@ -470,3 +519,58 @@ def validateFilter(conn, fields, filter):
         raise DatabaseQueryException('Cannot use %s operator on field %s' % (
             filter['operator'], filter['field']))
     return filter
+
+
+def validateFilterGroup(conn, fields, filter):
+    """
+    Validate a filter group.  The filter must be a dictionary with either 'and'
+    or 'or' with a list of filters, or 'group' with 'and' or 'or' and 'value'
+    with a list of filters.  The result is either a filter, a filter group in
+    the group/value form, or None.
+
+    :param conn: the database connector.  Used for validating fields.
+    :param fields: a list of known fields.
+    :param filter: a dictionary with a filter group.
+    :returns: a filter, filter group, or None.
+    """
+    if filter.get('and') is not None:
+        group = 'and'
+        value = filter['and']
+        bad = filter.get('or') is not None or filter.get('group')
+    elif filter.get('or') is not None:
+        group = 'or'
+        value = filter['or']
+        bad = filter.get('group')
+    else:
+        group = filter['group']
+        value = filter.get('value')
+        bad = group not in ('and', 'or')
+    if bad or not isinstance(value, (list)):
+        raise DatabaseQueryException('Filter group badly formed.')
+    value = [validateFilter(conn, fields, entry)
+             for entry in validateFilterList(value)]
+    value = [entry for entry in value if entry is not None]
+    if not len(value):
+        return None
+    if len(value) == 1:
+        return value[0]
+    return {'group': group, 'value': value}
+
+
+def validateFilterList(filters):
+    """
+    Check if an object is a list or tuple of filters.  If it is a single
+    filter, convert it to a list.
+
+    :param filters: a list of filters, a single filter, or None.
+    :return filters: a list of filters or None if this cannot be a converted to
+        a list of filters.
+    """
+    if filters is None:
+        return
+    if isinstance(filters, tuple):
+        filters = list(filters)
+    if (not isinstance(filters, list) or (
+            len(filters) and isinstance(filters[0], six.string_types))):
+        filters = [filters]
+    return filters

@@ -245,3 +245,19 @@ class DbsMongoTest(base.TestCase):
             self.dbFileId, ), user=self.admin, params=params)
         self.assertStatusOk(resp)
         self.assertNotEqual(resp.json['data'][0][2], None)
+        # Test nested filters
+        params['filters'] = json.dumps([
+            ['zip', 'isnot', None],
+            {'or': [['zip', '02133'], ['occupancytype', 'Comm']]}])
+        resp = self.request(path='/file/%s/database/select' % (
+            self.dbFileId, ), user=self.admin, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 10)
+        self.assertEqual(resp.json['data'][0][0], '02133')
+        self.assertEqual(resp.json['data'][9][0], '02134')
+        params['filters'] = json.dumps({
+            'and': [['zip', '02133'], ['occupancytype', 'Comm']]})
+        resp = self.request(path='/file/%s/database/select' % (
+            self.dbFileId, ), user=self.admin, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(len(resp.json['data']), 4)
