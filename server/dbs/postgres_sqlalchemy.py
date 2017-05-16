@@ -17,10 +17,13 @@
 #  limitations under the License.
 ##############################################################################
 
-from . import base
-from .sqlalchemydb import SQLAlchemyConnector
+import re
+import six
 import sqlalchemy
 import sqlalchemy.dialects.postgresql as dialect
+
+from . import base
+from .sqlalchemydb import SQLAlchemyConnector
 
 
 PostgresOperators = {
@@ -49,6 +52,9 @@ PostgresDatatypes = {
 }
 
 
+KnownTypes = {}
+
+
 class PostgresSAConnector(SQLAlchemyConnector):
     name = 'sqlalchemy_postgres'
 
@@ -58,9 +64,19 @@ class PostgresSAConnector(SQLAlchemyConnector):
         # dbparams can include values in http://www.postgresql.org/docs/
         #   current/static/libpq-connect.html#LIBPQ-PARAMKEYWORDS
         self.databaseOperators = PostgresOperators
-        self.types = {type: getattr(dialect, type) for type in dir(dialect)
-                      if isinstance(getattr(dialect, type),
-                                    sqlalchemy.sql.visitors.VisitableType)}
+        # Get a list of types and their classes so that we can cast using
+        # sqlalchemy
+        self.types = KnownTypes
+        KnownTypes.update({
+            type: getattr(dialect, type) for type in dir(dialect)
+            if isinstance(getattr(dialect, type),
+                          sqlalchemy.sql.visitors.VisitableType)})
+        # Include types that were added to the ischema_names table (this is
+        # done, for instance, by the geoalchemy module).
+        for ikey, itype in six.iteritems(dialect.base.ischema_names):
+            key = getattr(itype, '__visit_name__', None)
+            if key and key not in KnownTypes:
+                KnownTypes[key] = itype
 
     def _isFunctionAllowed(self, funcname):
         """
@@ -114,6 +130,69 @@ class PostgresSAConnector(SQLAlchemyConnector):
                             break
                     field['datatype'] = datatype
         return self.fields
+
+
+# Not all types in Postgres are known to SQLAlchemy.  We want to report this
+# information so that consumers of the data know what types are involved.  For
+# any type that is unknown, we create a UserDefinedType and then add it to our
+# list of KnownTypes so that casts can be done to this type if so desired.
+
+class DynamicType(sqlalchemy.types.UserDefinedType):
+    def __init__(self, *args, **kwargs):
+        """
+        The __init__ function needs to exist or an error is thrown, but we
+        don't need to do anything.  When a type is created dynamically, it will
+        have a class attribute of "name" which contains the type name.
+        """
+        pass
+
+    def get_col_spec(self, **kw):
+        """
+        When we are asked to generate a column specification, use the original
+        type name.
+        """
+        return self.name
+
+    def bind_processor(self, dialect):
+        def process(value):
+            return value
+        return process
+
+    def result_processor(self, dialect, coltype):
+        def process(value):
+            return value
+        return process
+
+
+# We repalce the internal Postgres dialect's _get_column_info so we can add
+# type classes as necessary.  It would be nicer to not have to monkey-patch
+# the module, but it doesn't expose the unknown types anywhere else; otherwise,
+# we would have to repeat the database introspection.
+gci = dialect.base.PGDialect._get_column_info
+
+
+def _get_column_info(self, name, format_type, *args, **kwargs):
+    """
+    When the PGDialect or its subclasses get column information, if the type
+    is unknown and certain conditions are met, create a new type dynamically.
+    This wraps the original function (see sqlalchemy's
+    dialects/postgresql/base.py file).
+    """
+    attype = re.sub(r'\(.*\)', '', format_type)
+    attype = re.sub(r'\[\]', '', attype)
+    info = gci(self, name, format_type, *args, **kwargs)
+    if (info['type'] == sqlalchemy.sql.sqltypes.NULLTYPE and
+            attype.lower() not in dialect.base.ischema_names and
+            attype not in KnownTypes):
+        newtype = type(str(attype), (DynamicType,), {'name': str(attype)})
+        newtype.__visit_name__ = attype
+        dialect.base.ischema_names[attype.lower()] = newtype
+        KnownTypes[attype] = newtype
+        info = gci(self, name, format_type, *args, **kwargs)
+    return info
+
+
+dialect.base.PGDialect._get_column_info = _get_column_info
 
 
 base.registerConnectorClass(PostgresSAConnector.name, PostgresSAConnector, {
