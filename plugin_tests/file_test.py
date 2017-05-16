@@ -493,6 +493,14 @@ class FileTest(base.TestCase):
         self.assertStatusOk(resp)
         self.assertEqual(resp.json['fields'], json.loads(params['fields']))
         self.assertEqual(resp.json['columns'], {'town': 0, 'popmod': 1})
+        # reference with csv
+        params['format'] = 'csv'
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params=params, isJson=False)
+        self.assertStatusOk(resp)
+        data = self.getBody(resp)
+        self.assertEqual(data.split('\r\n', 1)[0].split(','), ['town', 'popmod'])
+        del params['format']
         # Distinct and count can always be used as functions
         # Distinct must be the first field
         params['fields'] = json.dumps([

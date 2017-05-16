@@ -356,6 +356,8 @@ class DatabaseAssetstoreResource(Resource):
                                     'name of a table or a JSON list.')
         else:
             tables = [tables]
+        if params.get('limit') in ('', 'none'):
+            del params['limit']
         if params.get('limit') is not None:
             try:
                 params['limit'] = int(params['limit'])

@@ -56,7 +56,9 @@ def convertSelectDataToCsv(result, dumpFunc=json.dumps, *args, **kargs):
     data = convertSelectDataToList(result)['data']
 
     def resultFunc():
-        yield writer.writerow(result['fields'])
+        columns = {result['columns'][col]: col for col in result['columns']}
+        columnNames = [columns[i] for i in range(len(result['fields']))]
+        yield writer.writerow(columnNames)
         for row in data:
             row = [value if isinstance(value, allowedTypes) and
                    not isinstance(value, disallowedTypes) else
