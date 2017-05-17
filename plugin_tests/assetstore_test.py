@@ -255,6 +255,17 @@ class AssetstoreTest(base.TestCase):
             method='PUT', user=self.admin, params=params)
         self.assertStatus(resp, 400)
         self.assertIn('must be an integer', resp.json['message'])
+        # But an empty or 'none' limit should be okay
+        params['limit'] = ''
+        resp = self.request(
+            path='/database_assetstore/%s/import' % str(assetstore1['_id']),
+            method='PUT', user=self.admin, params=params)
+        self.assertStatusOk(resp)
+        params['limit'] = 'none'
+        resp = self.request(
+            path='/database_assetstore/%s/import' % str(assetstore1['_id']),
+            method='PUT', user=self.admin, params=params)
+        self.assertStatusOk(resp)
         del params['limit']
 
         # Import a table from mongo

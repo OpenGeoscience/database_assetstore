@@ -246,8 +246,12 @@ class FileTest(base.TestCase):
         resp = self.request(path='/file/%s/database/fields' % (
             fileId, ), user=self.admin)
         self.assertStatusOk(resp)
-        self.assertTrue(len([
-            col for col in resp.json if col['name'] == 'town']) > 0)
+        self.assertTrue(any([
+            col for col in resp.json if col['name'] == 'town']))
+        self.assertTrue(any([
+            col for col in resp.json if col['name'] == 'town' and col['datatype'] == 'string']))
+        self.assertTrue(any([
+            col for col in resp.json if col['name'] == 'geom' and col['datatype'] == 'geometry']))
         resp = self.request(path='/file/%s/database/fields' % (
             fileId, ), user=self.user)
         self.assertStatusOk(resp)
@@ -493,6 +497,14 @@ class FileTest(base.TestCase):
         self.assertStatusOk(resp)
         self.assertEqual(resp.json['fields'], json.loads(params['fields']))
         self.assertEqual(resp.json['columns'], {'town': 0, 'popmod': 1})
+        # reference with csv
+        params['format'] = 'csv'
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params=params, isJson=False)
+        self.assertStatusOk(resp)
+        data = self.getBody(resp)
+        self.assertEqual(data.split('\r\n', 1)[0].split(','), ['town', 'popmod'])
+        del params['format']
         # Distinct and count can always be used as functions
         # Distinct must be the first field
         params['fields'] = json.dumps([
