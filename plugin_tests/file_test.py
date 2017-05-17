@@ -246,8 +246,12 @@ class FileTest(base.TestCase):
         resp = self.request(path='/file/%s/database/fields' % (
             fileId, ), user=self.admin)
         self.assertStatusOk(resp)
-        self.assertTrue(len([
-            col for col in resp.json if col['name'] == 'town']) > 0)
+        self.assertTrue(any([
+            col for col in resp.json if col['name'] == 'town']))
+        self.assertTrue(any([
+            col for col in resp.json if col['name'] == 'town' and col['datatype'] == 'string']))
+        self.assertTrue(any([
+            col for col in resp.json if col['name'] == 'geom' and col['datatype'] == 'geometry']))
         resp = self.request(path='/file/%s/database/fields' % (
             fileId, ), user=self.user)
         self.assertStatusOk(resp)
