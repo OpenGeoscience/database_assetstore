@@ -529,6 +529,27 @@ class AssetstoreTest(base.TestCase):
             townFile, headers=False, extraParameters=params)
         self.assertEqual(''.join([part for part in func()]), jsondata)
 
+        # Test with group
+        params['sort'] = [
+            [{'func': 'count', 'param': {'field': 'town'}}, -1],
+            [{'func': 'max', 'param': {'field': 'town'}}, 1]]
+        params['fields'] = [
+            {'func': 'max', 'param': {'field': 'town'}},
+            'pop2010',
+            {'func': 'count', 'param': {'field': 'town'}}]
+        params['group'] = 'pop2010'
+        params['limit'] = 5
+        del params['filters']
+        func = adapter.downloadFile(
+            townFile, headers=False, extraParameters=params)
+        jsondata = ''.join([part for part in func()])
+        data = json.loads(jsondata)
+        self.assertEqual(data['datacount'], 5)
+        self.assertEqual(data['data'][0][0], 'DEDHAM')
+        self.assertEqual(data['data'][0][2], 2)
+        self.assertEqual(data['data'][4][0], 'ACTON')
+        self.assertEqual(data['data'][4][2], 1)
+
     def testAssetstoreFileCopy(self):
         # Create assetstore
         resp = self.request(path='/assetstore', method='POST', user=self.admin,

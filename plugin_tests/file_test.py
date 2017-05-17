@@ -933,6 +933,48 @@ class FileTest(base.TestCase):
         self.assertEqual(len(resp.json['data']), 5)
         self.assertEqual(resp.json['data'][0][0], 'ACTON')
 
+    def testFileDatabaseSelectGroup(self):
+        fileId, fileId2, fileId3 = self._setupDbFiles()
+        params = {
+            'sort': json.dumps([
+                [{'func': 'count', 'param': {'field': 'town'}}, -1],
+                [{'func': 'max', 'param': {'field': 'town'}}, 1]]),
+            'fields': json.dumps([
+                {'func': 'max', 'param': {'field': 'town'}},
+                'pop2010',
+                {'func': 'count', 'param': {'field': 'town'}}]),
+            'limit': 5
+        }
+        # Unknown fields aren't allowed
+        params['group'] = 'unknown,town'
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params=params)
+        self.assertStatus(resp, 400)
+        self.assertIn('must use known fields', resp.json['message'])
+        # Invalid json fails
+        params['group'] = '["not valid json",town'
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params=params)
+        self.assertStatus(resp, 400)
+        self.assertIn('must be a JSON list', resp.json['message'])
+        # A valid field works
+        params['group'] = 'pop2010'
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(resp.json['datacount'], 5)
+        self.assertEqual(resp.json['data'][0][0], 'DEDHAM')
+        self.assertEqual(resp.json['data'][0][2], 2)
+        self.assertEqual(resp.json['data'][4][0], 'ACTON')
+        self.assertEqual(resp.json['data'][4][2], 1)
+        # Multi-grouping works, too
+        params['group'] = json.dumps(['pop2010', 'popch80_90'])
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(resp.json['datacount'], 5)
+        self.assertEqual(resp.json['data'][0][0], 'ABINGTON')
+
     def testFileDatabaseSelectFormats(self):
         fileId, fileId2, fileId3 = self._setupDbFiles()
         params = {

@@ -397,6 +397,11 @@ class SQLAlchemyConnector(base.DatabaseConnector):
             filterQueries = self._addFilter(filterQueries, filter)
         if len(filterQueries):
             query = query.filter(sqlalchemy.and_(*filterQueries))
+        if queryProps.get('group'):
+            groups = [self._convertFieldOrFunction(field)
+                      for field in queryProps['group']]
+            if len(groups):
+                query = query.group_by(*groups)
         if queryProps.get('sort'):
             sortList = []
             for pos in range(len(queryProps['sort'])):

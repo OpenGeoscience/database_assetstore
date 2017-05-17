@@ -261,3 +261,9 @@ class DbsMongoTest(base.TestCase):
             self.dbFileId, ), user=self.admin, params=params)
         self.assertStatusOk(resp)
         self.assertEqual(len(resp.json['data']), 4)
+        # Group throws an error
+        params['group'] = 'zip'
+        with six.assertRaisesRegex(self, Exception,
+                                   'Group unsupported by this database'):
+            resp = self.request(path='/file/%s/database/select' % (
+                self.dbFileId, ), user=self.admin, params=params)

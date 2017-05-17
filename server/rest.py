@@ -154,6 +154,11 @@ def databaseRefresh(self, file, params):
            '"function" keys can also be added.  Filters can be grouped by '
            'using a dictionary with "group" equal to "and" or "or" and '
            '"value" containing a list of filters.', required=False)
+    .param('group', 'A comma-separated or JSON list of fields (column names) '
+           'to use in grouping data.  If data is grouped, the fields '
+           'parameter must either be the same as the grouping or use '
+           'aggregation functions.  Grouping may bot be supported by all '
+           'database types.', required=False)
     .param('format', 'The format to return the data (default=list).',
            required=False, enum=list(dbFormatList))
     .param('pretty', 'If true, add whitespace to JSON outputs '
@@ -198,6 +203,10 @@ def databaseRefresh(self, file, params):
     .errorResponse('The fields parameter must be a JSON list or a '
                    'comma-separated list of known field names.')
     .errorResponse('Fields must use known fields.')
+    .errorResponse('The group parameter must be a JSON list or a '
+                   'comma-separated list of known field names.')
+    .errorResponse('Group must use known fields.')
+    .errorResponse('Group unsupported by this database.')
     .errorResponse('The filters parameter must be a JSON list.')
     .errorResponse('Filters in list-format must have two or three components.')
     .errorResponse('Unknown filter operator')
@@ -324,7 +333,10 @@ class DatabaseAssetstoreResource(Resource):
         .param('sort', 'The default sort to use.  Either a field name or a '
                'JSON list of fields and directions.', required=False)
         .param('fields', 'The default fields to return.', required=False)
-        .param('filters', 'The default fields to return.', required=False)
+        .param('filters', 'The default filters to apply to the data.',
+               required=False)
+        .param('group', 'The default grouping to apply to the data.',
+               required=False)
         .param('limit', 'The default limit of rows to return.  Use \'none\' '
                'or a negative value to return all rows (0 returns 0 rows)',
                required=False)
@@ -386,6 +398,7 @@ class DatabaseAssetstoreResource(Resource):
                 'sort': params.get('sort'),
                 'fields': params.get('fields'),
                 'filters': params.get('filters'),
+                'group': params.get('group'),
                 'limit': params.get('limit'),
                 'format': format
                 }, ctx, user)

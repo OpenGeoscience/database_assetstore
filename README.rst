@@ -54,6 +54,8 @@ The ``GET`` ``file/{id}/database/select`` endpoint has numerous options:
 
   An example of fetching fields including a function: ``["town", {"func": "lower", "param": {"field": "town"}, "reference": "lowertown"}]``
 
+* *group* - an optional list of field (columns) used to group results.  This has the same format as the *fields* parameter.  This is equivalent to SQL ``GROUP BY``.  If it is used, the fields that are returned must either be fields used in the grouping or must be transformed using an aggregation function.
+
 * *filters* - a JSON list of filters to apply.  Each filter is a list or an object.  If a list, the filter is of the form [(field or object with function or value), (operator), (value or object with field, function, or value)].  If a filter is specified with an object, it needs either "field", "func" and "param", or "lvalue" for the left side, "operator", and either "value" or "rfunc" and "rparam" for the right side.  The operator is optional, and if not specified is the equality test.  The "field" and "value" entries can be objects with "field", "value" or "func" and "param".
 
   Alternately, a filter can be a group of filters that are combined via either "and" or "or".  A grouping filter must be an object, either with "group" specifying "and" or "or" and "value" containing a list of filters, or with a single key of either "and" or "or" which contains a list of filters.  Grouping filters can be nested to any depth.
@@ -114,7 +116,7 @@ The ``GET`` ``file/{id}/database/select`` endpoint has numerous options:
 Database Functions
 ------------------
 
-The ``sort``, ``fields``, and ``filters`` select parameters can use database functions.  Only non-internal, non-volatile functions are permitted.  For instance, when using Postgresql, you cannot use ``pg_*`` functions, nor a function like ``nextval``.
+The ``sort``, ``fields``, ``group``, and ``filters`` select parameters can use database functions.  Only non-internal, non-volatile functions are permitted.  For instance, when using Postgresql, you cannot use ``pg_*`` functions, nor a function like ``nextval``.
 
 Functions can be nested -- a function can be used as the parameter of another function.
 
