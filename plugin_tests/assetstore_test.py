@@ -360,6 +360,8 @@ class AssetstoreTest(base.TestCase):
             adapter.finalizeUpload({}, {})
 
     def testAssetstoreDownload(self):
+        from girder.plugins.database_assetstore import assetstore
+        from girder.plugins.database_assetstore import query
         # Create assetstore
         resp = self.request(path='/assetstore', method='POST', user=self.admin,
                             params=self.dbParams)
@@ -462,6 +464,28 @@ class AssetstoreTest(base.TestCase):
         self.assertEqual(data['fields'], ['town', 'pop2000', 'pop2010'])
         self.assertLess(int(data['data'][0][1]), 100000)
         self.assertLess(int(data['data'][1][1]), int(data['data'][0][1]))
+        # Test a direct query with group
+        params = {
+            'format': 'rawlist',
+            'sort': [
+                [{'func': 'count', 'param': {'field': 'town'}}, -1],
+                [{'func': 'max', 'param': {'field': 'town'}}, 1]
+            ],
+            'fields': [
+                {'func': 'max', 'param': {'field': 'town'}},
+                'pop2010',
+                {'func': 'count', 'param': {'field': 'town'}}
+            ],
+            'group': 'pop2010,popch80_90',
+            'limit': 5,
+        }
+        data = query.queryDatabase(
+            townFile['_id'], assetstore.getDbInfoForFile(townFile), params)
+        data = list(data[0]())
+        self.assertEqual(len(data), 5)
+        self.assertEqual(data[0][0], 'ABINGTON')
+        self.assertEqual(data[4][0], 'AGAWAM')
+
         # Test with bad extraParameters
         with six.assertRaisesRegex(self, Exception,
                                    'JSON-encoded dictionary, or a url'):

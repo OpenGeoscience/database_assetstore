@@ -967,12 +967,24 @@ class FileTest(base.TestCase):
         self.assertEqual(resp.json['data'][0][2], 2)
         self.assertEqual(resp.json['data'][4][0], 'ACTON')
         self.assertEqual(resp.json['data'][4][2], 1)
-        # Multi-grouping works, too
+        # Multi-grouping works, too.  Using json
         params['group'] = json.dumps(['pop2010', 'popch80_90'])
         resp = self.request(path='/file/%s/database/select' % (
             fileId, ), user=self.user, params=params)
         self.assertStatusOk(resp)
         self.assertEqual(resp.json['datacount'], 5)
+        self.assertEqual(resp.json['data'][0][0], 'ABINGTON')
+        # The list can be plain text
+        params['group'] = 'pop2010,popch80_90'
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
+        self.assertEqual(resp.json['data'][0][0], 'ABINGTON')
+        # extra commas and white space at the ends of field names are allowed
+        params['group'] = 'pop2010 ,, popch80_90 ,, '
+        resp = self.request(path='/file/%s/database/select' % (
+            fileId, ), user=self.user, params=params)
+        self.assertStatusOk(resp)
         self.assertEqual(resp.json['data'][0][0], 'ABINGTON')
 
     def testFileDatabaseSelectFormats(self):
