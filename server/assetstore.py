@@ -270,6 +270,7 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
             sort: default sort parameter.  Used in plain downloads.
             fields: default fields parameter.  Used in plain downloads.
             filters: default filters parameter.  Used in plain downloads.
+            group: default group parameter.  Used in plain downloads.
             format: default format parameter.  Used in plain downloads.
         :type params: dict
         :param progress: Object on which to record progress if possible.
@@ -338,7 +339,8 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
                     'limit must be empty or an integer')
             # Set or replace the database parameters for the file
             dbinfo['imported'] = True
-            for key in ('sort', 'fields', 'filters', 'format', 'limit'):
+            for key in ('sort', 'fields', 'filters', 'group', 'format',
+                        'limit'):
                 dbinfo[key] = params.get(key)
             file[DB_INFO_KEY] = dbinfo
             # Validate that we can perform queries by trying to download 1
@@ -455,7 +457,7 @@ def getQueryParamsForFile(file, setBlanks=False):
         return params
     if setBlanks:
         params['offset'] = 0
-    for key in ('sort', 'fields', 'filters', 'format', 'limit'):
+    for key in ('sort', 'fields', 'filters', 'group', 'format', 'limit'):
         if key in file[DB_INFO_KEY] or setBlanks:
             params[key] = file[DB_INFO_KEY].get(key)
     if str(params.get('limit')).isdigit():

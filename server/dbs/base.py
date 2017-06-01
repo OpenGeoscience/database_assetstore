@@ -315,7 +315,7 @@ class DatabaseConnector(object):
 
         :param fields: the results from getFieldInfo.
         :param queryProps: general query properties, including limit, offset,
-                           sort, fields, wait, poll, and initwait.
+                           sort, fields, group, wait, poll, and initwait.
         :param filters: a list of filters to apply.
         :param client: if a client is specified, a previous query made by this
                        client can be cancelled.
@@ -342,7 +342,7 @@ class DatabaseConnector(object):
         :param fields: the results from getFieldInfo.  If None, this may call
                        getFieldInfo.
         :param queryProps: general query properties, including limit, offset,
-                           sort, fields, wait, poll, and initwait.
+                           sort, fields, group, wait, poll, and initwait.
         :param filters: a list of filters to apply.
         :param client: if a client is specified, a previous query made by this
                        client can be cancelled.

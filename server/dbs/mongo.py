@@ -124,6 +124,10 @@ class MongoConnector(base.DatabaseConnector):
         result = super(MongoConnector, self).performSelect(
             fields, queryProps, filters)
 
+        if queryProps.get('group'):
+            raise DatabaseConnectorException(
+                'Group unsupported by this database.')
+
         filterQueryClauses = []
         for filt in filters:
             filterQueryClauses = self._addFilter(filterQueryClauses, filt)

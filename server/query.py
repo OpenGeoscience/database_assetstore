@@ -273,7 +273,7 @@ def getFilters(conn, fields, filtersValue=None, queryParams={},
     return [filter for filter in filters if filter is not None]
 
 
-def getFieldsList(conn, fields=None, fieldsValue=None):
+def getFieldsList(conn, fields=None, fieldsValue=None, paramName='fields'):
     """
     Get a list of fields from the query parameters.
 
@@ -281,6 +281,7 @@ def getFieldsList(conn, fields=None, fieldsValue=None):
     :param fields: a list of known fields.  None to let the connector fetch
                    them.
     :param fieldsValue: either a comma-separated list, a JSON list, or None.
+    :param paramName: parameter name used in errors.
     :returns: a list of fields or None.
     """
     if fieldsValue is None or fieldsValue == '':
@@ -298,13 +299,14 @@ def getFieldsList(conn, fields=None, fieldsValue=None):
             fieldsList = fieldsValue
         if not isinstance(fieldsList, list):
             raise DatabaseQueryException(
-                'The fields parameter must be a JSON list or a '
-                'comma-separated list of known field names.')
+                'The %s parameter must be a JSON list or a comma-separated '
+                'list of known field names.' % paramName)
     for field in fieldsList:
         if not conn.isField(
                 field, fields,
                 allowFunc=getattr(conn, 'allowFieldFunctions', False)):
-            raise DatabaseQueryException('Fields must use known fields %r.')
+            raise DatabaseQueryException('%s must use known fields (%r unknown).' % (
+                paramName.capitalize(), field))
     if not len(fieldsList):
         return None
     return fieldsList
@@ -415,6 +417,8 @@ def queryDatabase(idOrConnector, dbinfo, params):
         'poll': float(params.get('poll', 10)),
         'initwait': float(params.get('initwait', 0)),
     }
+    if 'group' in params:
+        queryProps['group'] = getFieldsList(conn, fields, params['group'], 'group')
     client = params.get('clientid')
     format = preferredFormat(params.get('format'))
     if not format:
