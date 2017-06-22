@@ -2,8 +2,8 @@
 Database Assetstore |build-status| |license-badge|
 ==================================================
 
-.. |build-status| image:: https://travis-ci.org/OpenGeoscience/girder_db_items.svg?branch=master
-    :target: https://travis-ci.org/OpenGeoscience/girder_db_items
+.. |build-status| image:: https://travis-ci.org/OpenGeoscience/database_assetstore.svg?branch=master
+    :target: https://travis-ci.org/OpenGeoscience/database_assetstore
     :alt: Build Status
 
 .. |license-badge| image:: https://raw.githubusercontent.com/girder/girder/master/docs/license.png
