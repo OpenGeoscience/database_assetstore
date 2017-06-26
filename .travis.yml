@@ -33,8 +33,7 @@ before_install:
 
     - girder_path=$build_path/girder
     - rm -fr $girder_path
-    # We use girder 1.7
-    - GIRDER_VERSION=1.x-maintenance
+    - GIRDER_VERSION=master
     - git clone --branch $GIRDER_VERSION https://github.com/girder/girder.git $girder_path
     - ln -sf $main_path $girder_path/plugins/database_assetstore
     - ls -l $girder_path/plugins
@@ -63,8 +62,9 @@ before_install:
 
 install:
     - cd $girder_path
-    - pip install -r requirements-dev.txt -r $main_path/requirements.txt -e .[plugins]
-    - npm install
+    - pip install -U -r requirements-dev.txt -e .
+    - pip install -r $main_path/requirements.txt -e .
+    - BABEL_ENV=cover NYC_CWD=$main_path girder-install web --plugins=database-assetstore --dev
 
 before_script:
     - psql -U postgres -c 'CREATE EXTENSION postgis;'
@@ -80,8 +80,12 @@ before_script:
 
 script:
     - mkdir -p $build_path/girder_testing_build
-    - cmake -DRUN_CORE_TESTS:BOOL=OFF -DBUILD_JAVASCRIPT_TESTS:BOOL=OFF -DTEST_PLUGINS:STRING=database_assetstore -DPYTHON_COVERAGE:BOOL=${PY_COVG} -DPYTHON_VERSION:STRING=${TRAVIS_PYTHON_VERSION} -DCOVERAGE_MINIMUM_PASS=90 -DJS_COVERAGE_MINIMUM_PASS=10 $girder_path
-    - make
+    - cd $build_path/girder_testing_build
+    # - cmake -DRUN_CORE_TESTS:BOOL=OFF -DTEST_PLUGINS:STRING=database_assetstore -DPYTHON_COVERAGE:BOOL=${PY_COVG} -DPYTHON_VERSION:STRING=${TRAVIS_PYTHON_VERSION} -DCOVERAGE_MINIMUM_PASS=90 -DJS_COVERAGE_MINIMUM_PASS=10 $girder_path
+    - cmake -DBUILD_JAVASCRIPT_TESTS:BOOL=OFF -DRUN_CORE_TESTS:BOOL=OFF -DTEST_PLUGINS:STRING=database_assetstore -DPYTHON_COVERAGE:BOOL=${PY_COVG} -DPYTHON_VERSION:STRING=${TRAVIS_PYTHON_VERSION} -DCOVERAGE_MINIMUM_PASS=90 -DJS_COVERAGE_MINIMUM_PASS=10 $girder_path
+
+    # Get sample database files and install them.
+    - make -j 3
     # Load postgres and show that we loaded the database properly
     - gunzip -c data/plugins/database_assetstore/testdb.sql.gz | psql -U postgres sampledb
     - psql -U postgres -h 127.0.0.1 sampledb -c "SELECT table_type,table_name FROM information_schema.tables WHERE table_schema='public' order by table_name;" | cat
