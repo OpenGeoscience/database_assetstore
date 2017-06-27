@@ -31,6 +31,7 @@ wrap(AssetstoresView, 'render', function (render) {
     }, this);
 
     this.$('.g-dbas-import-button').tooltip({
-        delay: 200
+        delay: 100
     });
+    return this;
 });

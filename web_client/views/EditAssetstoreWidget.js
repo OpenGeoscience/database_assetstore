@@ -17,6 +17,7 @@ wrap(EditAssetstoreWidget, 'render', function (render) {
             })
         );
     }
+    return this;
 });
 
 EditAssetstoreWidget.prototype.fieldsMap.database = {

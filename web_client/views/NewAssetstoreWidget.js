@@ -11,6 +11,7 @@ wrap(NewAssetstoreWidget, 'render', function (render) {
     render.call(this);
 
     this.$('#g-assetstore-accordion').append(AssetstoreCreateTemplate());
+    return this;
 });
 
 NewAssetstoreWidget.prototype.events['submit #g-new-dbas-form'] = function (e) {

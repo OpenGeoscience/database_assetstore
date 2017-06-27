@@ -5,7 +5,7 @@ import { restRequest } from 'girder/rest';
  * Extends the core assetstore model to add Database-specific functionality.
  */
 AssetstoreModel.prototype.databaseImport = function (params) {
-    restRequest({
+    return restRequest({
         path: 'database_assetstore/' + this.get('_id') + '/import',
         type: 'PUT',
         data: params,
@@ -15,12 +15,10 @@ AssetstoreModel.prototype.databaseImport = function (params) {
     }).fail((err) => {
         this.trigger('g:error', err);
     });
-
-    return this;
 };
 
 AssetstoreModel.prototype.databaseGetTables = function (params) {
-    restRequest({
+    return restRequest({
         path: 'database_assetstore/' + this.get('_id') + '/tables',
         type: 'GET',
         data: params,
@@ -30,8 +28,6 @@ AssetstoreModel.prototype.databaseGetTables = function (params) {
     }).fail((err) => {
         this.trigger('g:error', err);
     });
-
-    return this;
 };
 
 export default AssetstoreModel;
