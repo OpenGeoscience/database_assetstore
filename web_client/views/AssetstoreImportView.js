@@ -1,4 +1,11 @@
-girder.views.dbas_assetstore_ImportView = girder.View.extend({
+import BrowserWidget from 'girder/views/widgets/BrowserWidget';
+import events from 'girder/events';
+import router from 'girder/router';
+import View from 'girder/views/View';
+
+import DbAssetstoreImportTemplate from '../templates/dbAssetstoreImport.pug';
+
+var DbAssetStoreImportView = View.extend({
     events: {
         'submit .g-dbas-import-form': function (e) {
             e.preventDefault();
@@ -24,7 +31,7 @@ girder.views.dbas_assetstore_ImportView = girder.View.extend({
                 tables.push(entry);
             }
             this.model.off().on('g:imported', function () {
-                girder.router.navigate(parentType + '/' + parentId, {trigger: true});
+                router.navigate(parentType + '/' + parentId, {trigger: true});
             }, this).on('g:error', function (err) {
                 this.$('.g-submit-dbas-import').removeClass('disabled');
                 this.$('.g-validation-failed-message').text(err.responseJSON.message);
@@ -44,7 +51,7 @@ girder.views.dbas_assetstore_ImportView = girder.View.extend({
     },
 
     initialize: function () {
-        this._browserWidgetView = new girder.views.BrowserWidget({
+        this._browserWidgetView = new BrowserWidget({
             parentView: this,
             titleText: 'Destination',
             helpText: 'Browse to a location to select it as the destination.',
@@ -56,19 +63,19 @@ girder.views.dbas_assetstore_ImportView = girder.View.extend({
             }
         });
         this.listenTo(this._browserWidgetView, 'g:saved', function (val) {
-            this.$('#g-dbas-import-dest-id').val(val);
+            this.$('#g-dbas-import-dest-id').val(val.id);
             var model = this._browserWidgetView._hierarchyView.parentModel;
             this.$('#g-dbas-import-dest-type').val(model.get('_modelType'));
         });
 
         this.model
             .off('g:error').once('g:error', function (err) {
-                girder.events.trigger('g:alert', {
+                events.trigger('g:alert', {
                     icon: 'cancel',
                     text: err.responseJSON.message,
                     type: 'danger'
                 });
-                girder.router.navigate('assetstores', {trigger: true});
+                router.navigate('assetstores', {trigger: true});
             })
             .off('g:databaseGetTables').on('g:databaseGetTables',
                 function (resp) {
@@ -79,7 +86,7 @@ girder.views.dbas_assetstore_ImportView = girder.View.extend({
     },
 
     render: function () {
-        this.$el.html(girder.templates.db_assetstore_import({
+        this.$el.html(DbAssetstoreImportTemplate({
             assetstore: this.model,
             tableList: this.tableList
         }));
@@ -90,15 +97,4 @@ girder.views.dbas_assetstore_ImportView = girder.View.extend({
     }
 });
 
-girder.router.route('database_assetstore/:id/import', 'dbasImport', function (id) {
-    // Fetch the folder by id, then render the view.
-    var assetstore = new girder.models.AssetstoreModel({
-        _id: id
-    }).once('g:fetched', function () {
-        girder.events.trigger('g:navigateTo', girder.views.dbas_assetstore_ImportView, {
-            model: assetstore
-        });
-    }).once('g:error', function () {
-        girder.router.navigate('assetstores', {trigger: true});
-    }).fetch();
-});
+export default DbAssetStoreImportView;

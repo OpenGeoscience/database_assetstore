@@ -44,14 +44,6 @@ MongoOperators = {
 }
 
 
-def inferFields(records):
-    fields = set()
-    for r in records:
-        for field in r:
-            fields.add(field)
-    return list(fields)
-
-
 class MongoConnector(base.DatabaseConnector):
     name = 'mongo'
     databaseNameRequired = False
@@ -112,15 +104,42 @@ class MongoConnector(base.DatabaseConnector):
         return clauses
 
     def connect(self):
+        """
+        Connect to the database and get a reference to the Mongo collection.
+
+        :returns: the mongo collection.
+        """
         self.conn = MongoClient(self.databaseUrl)
         self.database = self.conn[self.databaseName]
         return self.database[self.collection]
 
     def disconnect(self):
+        """
+        Disconnect from the database.
+        """
         self.conn.close()
         self.conn = None
 
     def performSelect(self, fields, queryProps={}, filters=[], client=None):
+        """
+        Select data from the database.  The results are passed back as a
+        dictionary with the following values:
+          limit: the limit used in the query
+          offset: the offset used in the query
+          sort: the list of sort parameters used in the query.
+          fields: a list of the fields that are being returned in the order
+        that they are returned.
+          data: a list with one entry per row of results.  Each entry is a list
+        with one entry per column.
+
+        :param fields: the results from getFieldInfo.
+        :param queryProps: general query properties, including limit, offset,
+                           and sort.
+        :param filters: a list of filters to apply.
+        :param client: if a client is specified, a previous query made by this
+                       client can be cancelled.
+        :return: the results of the query.  See above.
+        """
         result = super(MongoConnector, self).performSelect(
             fields, queryProps, filters)
 
@@ -170,19 +189,27 @@ class MongoConnector(base.DatabaseConnector):
         return result
 
     def getFieldInfo(self):
+        """
+        Return a list of fields that are known and can be queried.
+
+        :return: a list of known fields.  Each entry is a dictionary with name,
+                 datatype, and optionally a description.
+        """
         if self.fieldInfo is None:
             # cache the fieldInfo so we don't process all of the documents
             # every time.
+            # TODO: either have a maximum duration or some other method of
+            # analyzing a subset of the table; on a large table this takes a
+            # long time.
             coll = self.connect()
 
             fields = {}
             for result in coll.find():
                 fields.update(result)
-            headers = inferFields([fields])
 
             fieldInfo = []
-            for h in sorted(headers):
-                fieldInfo.append({'name': h,
+            for field in sorted(six.iterkeys(fields)):
+                fieldInfo.append({'name': field,
                                   'type': 'unknown'})
             self.fieldInfo = fieldInfo
         return self.fieldInfo
@@ -222,10 +249,20 @@ class MongoConnector(base.DatabaseConnector):
 
     @staticmethod
     def validate(url=None, database=None, collection=None, **kwargs):
+        """
+        Validate that the passed arguments are sufficient for connecting to the
+        database.
+
+        :returns: True if the arguments should allow connecting to the db.
+        """
         return url and collection
 
     @staticmethod
     def jsonDumps(*args, **kwargs):
+        """
+        Use the bson utility to dump JSON.  This handles special BSON
+        datatypes.  See json.dumps for the function paramters.
+        """
         return bson.json_util.dumps(*args, **kwargs)
 
 
