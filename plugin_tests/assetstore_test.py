@@ -469,7 +469,8 @@ class AssetstoreTest(base.TestCase):
         }
         func = adapter.downloadFile(townFile, headers=False,
                                     extraParameters=params)
-        data = json.loads(''.join([part for part in func()]))
+        data = b''.join([part for part in func()])
+        data = json.loads(data.decode('utf8'))
         self.assertEqual(data['datacount'], 5)
         self.assertEqual(data['fields'], ['town', 'pop2000', 'pop2010'])
         self.assertLess(int(data['data'][0][1]), 100000)
@@ -512,56 +513,56 @@ class AssetstoreTest(base.TestCase):
         params['limit'] = 0
         func = adapter.downloadFile(
             townFile, headers=False, extraParameters=params)
-        jsondata = ''.join([part for part in func()])
-        data = json.loads(jsondata)
+        jsondata = b''.join([part for part in func()])
+        data = json.loads(jsondata.decode('utf8'))
         self.assertEqual(data['datacount'], 0)
         self.assertEqual(data['fields'], ['town', 'pop2000'])
         # It shouldn't matter if we ask for this via json, query, or object
         func = adapter.downloadFile(
             townFile, headers=False,
             extraParameters=urllib.parse.urlencode(params))
-        self.assertEqual(''.join([part for part in func()]), jsondata)
+        self.assertEqual(b''.join([part for part in func()]), jsondata)
         func = adapter.downloadFile(
             townFile, headers=False, extraParameters=json.dumps(params))
-        self.assertEqual(''.join([part for part in func()]), jsondata)
+        self.assertEqual(b''.join([part for part in func()]), jsondata)
 
         params['limit'] = 'none'
         func = adapter.downloadFile(
             townFile, headers=False, extraParameters=params)
-        jsondata = ''.join([part for part in func()])
-        data = json.loads(jsondata)
+        jsondata = b''.join([part for part in func()])
+        data = json.loads(jsondata.decode('utf8'))
         self.assertEqual(data['datacount'], 71)
         self.assertEqual(data['fields'], ['town', 'pop2000'])
         # It shouldn't matter if we ask for this via json, query, or object
         func = adapter.downloadFile(
             townFile, headers=False,
             extraParameters=urllib.parse.urlencode(params))
-        self.assertEqual(''.join([part for part in func()]), jsondata)
+        self.assertEqual(b''.join([part for part in func()]), jsondata)
         func = adapter.downloadFile(
             townFile, headers=False, extraParameters=json.dumps(params))
-        self.assertEqual(''.join([part for part in func()]), jsondata)
+        self.assertEqual(b''.join([part for part in func()]), jsondata)
 
         # None can also be used as unlimited
         params['limit'] = None
         func = adapter.downloadFile(
             townFile, headers=False, extraParameters=params)
-        self.assertEqual(''.join([part for part in func()]), jsondata)
+        self.assertEqual(b''.join([part for part in func()]), jsondata)
         func = adapter.downloadFile(
             townFile, headers=False,
             extraParameters=urllib.parse.urlencode(params))
-        self.assertEqual(''.join([part for part in func()]), jsondata)
+        self.assertEqual(b''.join([part for part in func()]), jsondata)
         func = adapter.downloadFile(
             townFile, headers=False, extraParameters=json.dumps(params))
-        self.assertEqual(''.join([part for part in func()]), jsondata)
+        self.assertEqual(b''.join([part for part in func()]), jsondata)
         # filters can also be an object or tuple
         params['filters'] = json.loads(params['filters'])
         func = adapter.downloadFile(
             townFile, headers=False, extraParameters=params)
-        self.assertEqual(''.join([part for part in func()]), jsondata)
+        self.assertEqual(b''.join([part for part in func()]), jsondata)
         params['filters'] = tuple(params['filters'])
         func = adapter.downloadFile(
             townFile, headers=False, extraParameters=params)
-        self.assertEqual(''.join([part for part in func()]), jsondata)
+        self.assertEqual(b''.join([part for part in func()]), jsondata)
 
         # Test with group
         params['sort'] = [
@@ -576,8 +577,8 @@ class AssetstoreTest(base.TestCase):
         del params['filters']
         func = adapter.downloadFile(
             townFile, headers=False, extraParameters=params)
-        jsondata = ''.join([part for part in func()])
-        data = json.loads(jsondata)
+        jsondata = b''.join([part for part in func()])
+        data = json.loads(jsondata.decode('utf8'))
         self.assertEqual(data['datacount'], 5)
         self.assertEqual(data['data'][0][0], 'DEDHAM')
         self.assertEqual(data['data'][0][2], 2)
@@ -589,9 +590,9 @@ class AssetstoreTest(base.TestCase):
         adapter = assetstore_utilities.getAssetstoreAdapter(assetstore1)
         handle = adapter.open(townFile)
         data = handle.read(200)
-        self.assertIn('"fields"', data)
+        self.assertEqual(data[:2], b'{"')
         data += handle.read(200)
-        self.assertNotIn('"fields"', data[200:])
+        self.assertNotEqual(data[:200], data[200:])
         handle.seek(100)
         data100 = handle.read(200)
         self.assertEqual(data100, data[100:300])

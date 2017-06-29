@@ -255,6 +255,8 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
                 # Currently we only support a single range.
                 offset, endByte = rangeHeader[0]
 
+        resultFunc = reyieldBytesFunc(resultFunc)
+
         # We often have to compute the response length.  This also handles
         # partial range requests (though not very efficiently, as each
         # request will requery the database, which may not be consistent).
@@ -266,7 +268,7 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
         if headers:
             self.setContentHeaders(file, offset, endByte, contentDisposition)
             if endByte is not None and endByte - offset <= 0:
-                return lambda: ''
+                return lambda: b''
 
         return resultFunc
 
@@ -531,6 +533,20 @@ def getTableList(assetstore, internalTables=False):
         assetstore['database']['uri'],
         internalTables=internalTables,
         dbparams=assetstore['database'].get('dbparams', {}))
+
+
+def reyieldBytesFunc(func):
+    """
+    Given a generator function, return a generator function that always yields
+    bytes, never unicode.
+    """
+    def resultFunc():
+        for chunk in func():
+            if not isinstance(chunk, six.binary_type):
+                chunk = chunk.encode('utf8')
+            yield chunk
+
+    return resultFunc
 
 
 def validateFile(file):
