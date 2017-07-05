@@ -274,7 +274,10 @@ class SQLAlchemyConnector(base.DatabaseConnector):
             # still have side effects (for instance, setseed() changes the
             # state for generating random numbers which could have
             # cryptographic implications).
-            sess.execute('set default_transaction_read_only=on')
+            try:
+                sess.execute('set default_transaction_read_only=on')
+            except sqlalchemy.exc.OperationalError:
+                pass
         if client:
             if client not in self.sessions:
                 self.sessions[client] = {}
@@ -348,17 +351,18 @@ class SQLAlchemyConnector(base.DatabaseConnector):
                        for view in insp.get_view_names()])
         databaseName = base.databaseFromUri(url)
         results = [{'database': databaseName, 'tables': tables}]
-        for schema in schemas:
-            if not internalTables and schema.lower() == 'information_schema':
-                continue
-            if schema != defaultSchema:
-                tables = [{'name': '%s.%s' % (schema, table),
-                           'table': table, 'schema': schema}
-                          for table in dbEngine.table_names(schema=schema)]
-                tables.extend([{'name': '%s.%s' % (schema, view),
-                                'table': view, 'schema': schema}
-                               for view in insp.get_view_names(schema=schema)])
-                results[0]['tables'].extend(tables)
+        if len(schemas) < 25:
+            for schema in schemas:
+                if not internalTables and schema.lower() == 'information_schema':
+                    continue
+                if schema != defaultSchema:
+                    tables = [{'name': '%s.%s' % (schema, table),
+                               'table': table, 'schema': schema}
+                              for table in dbEngine.table_names(schema=schema)]
+                    tables.extend([{'name': '%s.%s' % (schema, view),
+                                    'table': view, 'schema': schema}
+                                   for view in insp.get_view_names(schema=schema)])
+                    results[0]['tables'].extend(tables)
         return results
 
     def performSelect(self, fields, queryProps={}, filters=[], client=None):
