@@ -42,13 +42,16 @@ FilterOperators = {
     'in': 'in',
     'not_in': 'not_in',
     'notin': 'not_in',
-    'regex': 'regex',
+    'regex': 'regex',  # case sensitive regex
+    'regexp': 'regex',
     '~': 'regex',
-    'search': 'search',  # case insensitive regex
-    '~*': 'search',
     'not_regex': 'not_regex',
     'notregex': 'not_regex',
+    'not_regexp': 'not_regex',
+    'notregexp': 'not_regex',
     '!~': 'not_regex',
+    'search': 'search',  # case insensitive regex
+    '~*': 'search',
     'not_search': 'not_search',
     'notsearch': 'not_search',
     '!~*': 'not_search',

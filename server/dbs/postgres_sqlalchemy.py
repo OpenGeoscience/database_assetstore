@@ -22,6 +22,8 @@ import six
 import sqlalchemy
 import sqlalchemy.dialects.postgresql as dialect
 
+from girder import logger as log
+
 from . import base
 from .sqlalchemydb import SQLAlchemyConnector
 
@@ -109,6 +111,19 @@ class PostgresSAConnector(SQLAlchemyConnector):
             self._allowedFunctions['count'] = True
             self._allowedFunctions['distinct'] = True
         return self._allowedFunctions.get(funcname.lower(), False)
+
+    def setSessionReadOnly(self, sess):
+        """
+        Set the specified session to read only if possible.  Subclasses should
+        implement the appropriate behavior.
+
+        :param sess: the session to adjust.
+        """
+        try:
+            sess.execute('set default_transaction_read_only=on')
+        except sqlalchemy.exc.OperationalError:
+            log.warn('Couldn\'t set default_transaction to read_only')
+            sess.rollback()
 
     def getFieldInfo(self):
         """

@@ -21,18 +21,19 @@
               placeholder="Name")
         .form-group
           label.control-label(for="g-new-dbas-dbtype") Database Type
-          // input.input-sm.form-control#g-new-dbas-dbtype(
+          //- input.input-sm.form-control#g-new-dbas-dbtype(
             type="text" placeholder="Database Type")
           select.input-sm.form-control#g-new-dbas-dbtype
             option(value='', disabled=true, selected=true) Select Database Type
             option(value='mongo') MongoDB
+            option(value='sqlalchemy_mysql') MySQL
             option(value='sqlalchemy_postgres') PostgreSQL
             option(value='sqlalchemy') Generic SQL
         .form-group(title='This is of the form [(dialect)://][(user name)[:(password)]@](server)[:(port)]/(database)[?(options)].  Dialect is one of mongodb, postgresql, sqlite, mysql, oracle, or mssql.  For example, postgresql://localhost/sampledb')
           label.control-label(for="g-new-dbas-dburi") Database URI
           input.input-sm.form-control#g-new-dbas-dburi(
             type="text", placeholder="URI -- (dialect)://(user):(password)@(server):(port)/(database)?(options)")
-        // .form-group
+        //- .form-group
           label.control-label(for="g-new-dbas-table") Table or Collection
           input.input-sm.form-control#g-new-dbas-table(
             type="text", placeholder="Table")
