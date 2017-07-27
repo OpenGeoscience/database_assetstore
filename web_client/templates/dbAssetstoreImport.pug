@@ -10,7 +10,7 @@ form.g-dbas-import-form
     for database in tableList
       - numEntries += database['tables'].length + (database['tables'].length > 1 ? 2 : 1)
     - var selectSize = Math.min(numEntries, 20)
-    select.input-sm.form-control#g-dbas-table-name(multiple=true, size=selectSize)
+    select#g-dbas-table-name.input-sm.form-control(multiple=true, size=selectSize)
       if tableList.length > 1
         option(value='', selected=true) All tables in all databases
       for database in tableList
@@ -21,19 +21,19 @@ form.g-dbas-import-form
             option(value='database:'+database['database']+':table:'+table['name'])= table['name']
   .form-group(title='Optional.  This is either a field (column) name or a JSON list of multiple fields and directions for sorting (e.g., [["field1", 1], ["field2", -1]])')
     label(for="g-dbas-sort-param") Default sort order
-    input.form-control.input-sm#g-dbas-sort-param(type="text")
+    input#g-dbas-sort-param.form-control.input-sm(type="text")
   .form-group(title='Optional.  A comma-separated or JSON list of fields (column names) to return')
     label(for="g-dbas-fields-param") Default fields
-    input.form-control.input-sm#g-dbas-fields-param(type="text")
+    input#g-dbas-fields-param.form-control.input-sm(type="text")
   .form-group(title='Optional.  A JSON list of filters to apply to the data')
     label(for="g-dbas-filters-param") Default filters
-    input.form-control.input-sm#g-dbas-filters-param(type="text")
+    input#g-dbas-filters-param.form-control.input-sm(type="text")
   .form-group(title='Optional.  The default number of rows to return')
     label(for="g-dbas-limit-param") Default limit
-    input.form-control.input-sm#g-dbas-limit-param(type="text")
+    input#g-dbas-limit-param.form-control.input-sm(type="text")
   .form-group(title='The default format when downloading data')
     label(for="g-dbas-format-param") Default format
-    select.input-sm.form-control#g-dbas-format-param
+    select#g-dbas-format-param.input-sm.form-control
       option(value='list', selected=true) JSON list of lists
       option(value='dict') JSON list of objects
       option(value='csv') CSV with header row
@@ -42,14 +42,14 @@ form.g-dbas-import-form
       option(value='geojson') GeoJSON -- all rows and values are combined into a single GeometryCollection or FeatureCollection
   .form-group
     label(for="g-dbas-import-dest-type") Destination type
-    select.form-control#g-dbas-import-dest-type
+    select#g-dbas-import-dest-type.form-control
       option(value="folder", selected=true) Folder
       option(value="user") User
       option(value="collection") Collection
   .form-group
     label(for="g-dbas-import-dest-id") Destination ID
     .input-group.input-group-sm
-      input.form-control.input-sm#g-dbas-import-dest-id(
+      input#g-dbas-import-dest-id.form-control.input-sm(
           type="text",
           placeholder="Existing folder, user, or collection ID to use as the destination")
       .input-group-btn
