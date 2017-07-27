@@ -28,6 +28,7 @@
             option(value='mongo') MongoDB
             option(value='sqlalchemy_mysql') MySQL
             option(value='sqlalchemy_postgres') PostgreSQL
+            option(value='sqlalchemy_sqlite') SQLite
             option(value='sqlalchemy') Generic SQL
         .form-group(title='This is of the form [(dialect)://][(user name)[:(password)]@](server)[:(port)]/(database)[?(options)].  Dialect is one of mongodb, postgresql, sqlite, mysql, oracle, or mssql.  For example, postgresql://localhost/sampledb')
           label.control-label(for="g-new-dbas-dburi") Database URI

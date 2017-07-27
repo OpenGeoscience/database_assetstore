@@ -47,22 +47,6 @@ _enginePool = {}
 _enginePoolMaxSize = 5
 
 
-def adjustDBUrl(url):
-    """
-    Adjust a url to match the form sqlalchemy requires.  In general, the url is
-    of the form dialect+driver://username:password@host:port/database.
-
-    :param url: the url to adjust.
-    :returns: the adjusted url
-    """
-    # The below code is disabled until a test can be made where it works.
-    # sqlalchemy doesn't seem to permit this without some additional module
-    # If the prefix is sql://, use the default generic-sql dialect
-    # if url.startswith('sql://'):
-    #     url = url.split('sql://', 1)[1]
-    return url
-
-
 def getEngine(url, **kwargs):
     """
     Get a sqlalchemy engine from a pool in case we use the same parameters for
@@ -90,7 +74,7 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         # dbparams can include values in http://www.postgresql.org/docs/
         #   current/static/libpq-connect.html#LIBPQ-PARAMKEYWORDS
         self.dbparams = kwargs.get('dbparams', {})
-        self.databaseUrl = adjustDBUrl(kwargs.get('url'))
+        self.databaseUrl = self.adjustDBUrl(kwargs.get('url'))
 
         # Additional parameters:
         #  idletime: seconds after which a connection is considered idle
@@ -216,6 +200,24 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         """
         return self._allowedFunctions.get(proname, False)
 
+    @classmethod
+    def adjustDBUrl(cls, url):
+        """
+        Adjust a url to match the form sqlalchemy requires.  In general, the
+        url is of the form
+        dialect+driver://username:password@host:port/database.
+
+        :param url: the url to adjust.
+        :returns: the adjusted url
+        """
+        # The below code is disabled until a test can be made where it works.
+        # sqlalchemy doesn't seem to permit this without some additional
+        # module.
+        #   If the prefix is sql://, use the default generic-sql dialect:
+        # if url.startswith('sql://'):
+        #     url = url.split('sql://', 1)[1]
+        return url
+
     def connect(self, client=None):
         """
         Connect to the database.
@@ -336,8 +338,8 @@ class SQLAlchemyConnector(base.DatabaseConnector):
             self.fields = fields
         return fields
 
-    @staticmethod
-    def getTableList(url, internalTables=False, dbparams={}, **kwargs):
+    @classmethod
+    def getTableList(cls, url, internalTables=False, dbparams={}, **kwargs):
         """
         Get a list of known databases, each of which has a list of known tables
         from the database.  This is of the form [{'database': (database),
@@ -348,7 +350,7 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         :param dbparams: optional parameters to send to the connection.
         :returns: A list of known tables.
         """
-        dbEngine = sqlalchemy.create_engine(adjustDBUrl(url), **dbparams)
+        dbEngine = sqlalchemy.create_engine(cls.adjustDBUrl(url), **dbparams)
         insp = sqlalchemy.engine.reflection.Inspector.from_engine(dbEngine)
         schemas = insp.get_schema_names()
         defaultSchema = insp.default_schema_name

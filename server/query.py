@@ -58,14 +58,14 @@ def convertSelectDataToCsv(result, dumpFunc=json.dumps, *args, **kargs):
     def resultFunc():
         columns = {result['columns'][col]: col for col in result['columns']}
         columnNames = [columns[i] for i in range(len(result['fields']))]
-        yield writer.writerow(columnNames)
+        yield writer.writerow(csv_safe_unicode(columnNames))
         for row in data:
             row = [value if isinstance(value, allowedTypes) and
                    not isinstance(value, disallowedTypes) else
                    dumpFunc(value, check_circular=False, separators=(',', ':'),
                             sort_keys=False, default=str) for value in row]
 
-            yield writer.writerow(row)
+            yield writer.writerow(csv_safe_unicode(row))
 
     return resultFunc
 
@@ -227,6 +227,27 @@ def convertSelectDataToRawlist(result, *args, **kargs):
             yield row
 
     return resultFunc
+
+
+def csv_safe_unicode(row, ignoreErrors=True):
+    """
+    Given an array of values, make sure all strings are unicode in Python 3 and
+    str in Python 2.
+
+    :param row: an array which could contain mixed types.
+    :param ignoreErrors: if True, convert what is possible and ignore errors.
+        If false, conversion errors will raise an exception.
+    :returns: either the original array if safe, or an array with all byte
+        strings converted to unicode in Python 3 or str in Python 2.
+    """
+    # This is unicode in Python 2 and bytes in Python 3
+    not_str = six.text_type if str == six.binary_type else six.binary_type
+    if not any([isinstance(value, not_str) for value in row]):
+        return row
+    func = 'encode' if str == six.binary_type else 'decode'
+    row = [getattr(value, func)('utf8', 'ignore' if ignoreErrors else 'strict')
+           if isinstance(value, not_str) else value for value in row]
+    return row
 
 
 def getFilters(conn, fields, filtersValue=None, queryParams={},
