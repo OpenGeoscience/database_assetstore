@@ -24,7 +24,7 @@ from six.moves import urllib
 
 from girder.constants import AssetstoreType
 from girder.models.model_base import GirderException, ValidationException
-from girder.utility.abstract_assetstore_adapter import AbstractAssetstoreAdapter
+from girder.utility.abstract_assetstore_adapter import AbstractAssetstoreAdapter, FileHandle
 from girder.utility.model_importer import ModelImporter
 
 from . import dbs
@@ -32,6 +32,43 @@ from .query import dbFormatList, queryDatabase, preferredFormat
 
 
 DB_INFO_KEY = 'databaseMetadata'
+
+
+class DatabaseAssetstoreFile(dict):
+    """
+    This wraps a Girder file object dictionary so that the size parameter can
+    be determined only when actually necessary.
+    """
+    def __init__(self, file, adapter, *args, **kwargs):
+        """
+        Create a file dictionary where 'size' and 'mimeType' are determined
+        lazily.
+
+        :param file: the original file dictionary.
+        :param adapter: the owning assetstore adapter.
+        """
+        self._file = file
+        self._adapter = adapter
+        self._loaded = None
+        return super(DatabaseAssetstoreFile, self).__init__(file, *args, **kwargs)
+
+    def __getitem__(self, key, *args, **kwargs):
+        """
+        If this is the first time size is asked for, compute it and store it in
+        the original file dictionary.  Otherwise, just return the internal
+        dictionary result.
+
+        See the base dict class for function details.
+        """
+        if key in ('size', 'mimeType') and not self._loaded:
+            self._adapter.downloadFile(self._file, offset=1, headers=False, endByte=2)
+            dbinfo = getDbInfoForFile(self._file, self._adapter.assetstore)
+            params = getQueryParamsForFile(self._file, True)
+            resultFunc, mimeType = queryDatabase(self._file.get('_id'), dbinfo, params)
+            self._file['mimeType'] = mimeType
+            resultFunc, endByte = self._adapter._getDownloadSize(self._file, resultFunc, 0, 0)
+            self._loaded = True
+        return super(DatabaseAssetstoreFile, self).__getitem__(key, *args, **kwargs)
 
 
 class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
@@ -218,6 +255,8 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
                 # Currently we only support a single range.
                 offset, endByte = rangeHeader[0]
 
+        resultFunc = reyieldBytesFunc(resultFunc)
+
         # We often have to compute the response length.  This also handles
         # partial range requests (though not very efficiently, as each
         # request will requery the database, which may not be consistent).
@@ -229,9 +268,24 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
         if headers:
             self.setContentHeaders(file, offset, endByte, contentDisposition)
             if endByte is not None and endByte - offset <= 0:
-                return lambda: ''
+                return lambda: b''
 
         return resultFunc
+
+    def open(self, file):
+        """
+        Exposes a Girder file as a python file-like object. At the
+        moment, this is a read-only interface, the equivalent of opening a
+        system file with 'rb' mode.
+
+        :param file: A Girder file document.
+        :type file: dict
+        :return: A file-like object containing the bytes of the file.
+        :rtype: FileHandle
+        """
+        if not isinstance(file, DatabaseAssetstoreFile):
+            file = DatabaseAssetstoreFile(file, self)
+        return FileHandle(file, self)
 
     def copyFile(self, srcFile, destFile):
         """
@@ -479,6 +533,20 @@ def getTableList(assetstore, internalTables=False):
         assetstore['database']['uri'],
         internalTables=internalTables,
         dbparams=assetstore['database'].get('dbparams', {}))
+
+
+def reyieldBytesFunc(func):
+    """
+    Given a generator function, return a generator function that always yields
+    bytes, never unicode.
+    """
+    def resultFunc():
+        for chunk in func():
+            if not isinstance(chunk, six.binary_type):
+                chunk = chunk.encode('utf8')
+            yield chunk
+
+    return resultFunc
 
 
 def validateFile(file):

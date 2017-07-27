@@ -93,6 +93,29 @@ class AssetstoreTest(base.TestCase):
             'dburi': os.environ.get('GIRDER_TEST_DB')
         }
 
+    def _createTownItem(self, params=None):
+        # Create assetstore
+        resp = self.request(path='/assetstore', method='POST', user=self.admin,
+                            params=self.dbParams)
+        self.assertStatusOk(resp)
+        assetstore1 = resp.json
+        # Import a tables from postgres
+        if not params:
+            params = {}
+        params.update({
+            'parentId': str(self.publicFolder['_id']),
+            'parentType': 'folder',
+            'table': 'towns',
+        })
+        resp = self.request(
+            path='/database_assetstore/%s/import' % str(assetstore1['_id']),
+            method='PUT', user=self.admin, params=params)
+        self.assertStatusOk(resp)
+        townItem = list(self.model('item').textSearch('towns', user=self.admin,
+                                                      limit=1))[0]
+        townFile = list(self.model('item').childFiles(item=townItem))[0]
+        return townItem, townFile, assetstore1
+
     def testAssetstoreCreate(self):
         # Make sure admin access required
         resp = self.request(path='/assetstore', method='POST',
@@ -362,26 +385,13 @@ class AssetstoreTest(base.TestCase):
     def testAssetstoreDownload(self):
         from girder.plugins.database_assetstore import assetstore
         from girder.plugins.database_assetstore import query
-        # Create assetstore
-        resp = self.request(path='/assetstore', method='POST', user=self.admin,
-                            params=self.dbParams)
-        self.assertStatusOk(resp)
-        assetstore1 = resp.json
-        # Import some tables from postgres
-        params = {
-            'parentId': str(self.publicFolder['_id']),
-            'parentType': 'folder',
-            'table': 'towns',
+
+        townItem, townFile, assetstore1 = self._createTownItem({
             'format': 'list',
             'fields': 'town,pop2010',
             'limit': '10'
-        }
-        resp = self.request(
-            path='/database_assetstore/%s/import' % str(assetstore1['_id']),
-            method='PUT', user=self.admin, params=params)
-        self.assertStatusOk(resp)
-        townItem = list(self.model('item').textSearch(
-            'towns', user=self.admin, limit=1))[0]
+        })
+
         resp = self.request(path='/item/%s/download' % str(townItem['_id']))
         self.assertStatusOk(resp)
         data = resp.json
@@ -459,7 +469,8 @@ class AssetstoreTest(base.TestCase):
         }
         func = adapter.downloadFile(townFile, headers=False,
                                     extraParameters=params)
-        data = json.loads(''.join([part for part in func()]))
+        data = b''.join([part for part in func()])
+        data = json.loads(data.decode('utf8'))
         self.assertEqual(data['datacount'], 5)
         self.assertEqual(data['fields'], ['town', 'pop2000', 'pop2010'])
         self.assertLess(int(data['data'][0][1]), 100000)
@@ -502,56 +513,56 @@ class AssetstoreTest(base.TestCase):
         params['limit'] = 0
         func = adapter.downloadFile(
             townFile, headers=False, extraParameters=params)
-        jsondata = ''.join([part for part in func()])
-        data = json.loads(jsondata)
+        jsondata = b''.join([part for part in func()])
+        data = json.loads(jsondata.decode('utf8'))
         self.assertEqual(data['datacount'], 0)
         self.assertEqual(data['fields'], ['town', 'pop2000'])
         # It shouldn't matter if we ask for this via json, query, or object
         func = adapter.downloadFile(
             townFile, headers=False,
             extraParameters=urllib.parse.urlencode(params))
-        self.assertEqual(''.join([part for part in func()]), jsondata)
+        self.assertEqual(b''.join([part for part in func()]), jsondata)
         func = adapter.downloadFile(
             townFile, headers=False, extraParameters=json.dumps(params))
-        self.assertEqual(''.join([part for part in func()]), jsondata)
+        self.assertEqual(b''.join([part for part in func()]), jsondata)
 
         params['limit'] = 'none'
         func = adapter.downloadFile(
             townFile, headers=False, extraParameters=params)
-        jsondata = ''.join([part for part in func()])
-        data = json.loads(jsondata)
+        jsondata = b''.join([part for part in func()])
+        data = json.loads(jsondata.decode('utf8'))
         self.assertEqual(data['datacount'], 71)
         self.assertEqual(data['fields'], ['town', 'pop2000'])
         # It shouldn't matter if we ask for this via json, query, or object
         func = adapter.downloadFile(
             townFile, headers=False,
             extraParameters=urllib.parse.urlencode(params))
-        self.assertEqual(''.join([part for part in func()]), jsondata)
+        self.assertEqual(b''.join([part for part in func()]), jsondata)
         func = adapter.downloadFile(
             townFile, headers=False, extraParameters=json.dumps(params))
-        self.assertEqual(''.join([part for part in func()]), jsondata)
+        self.assertEqual(b''.join([part for part in func()]), jsondata)
 
         # None can also be used as unlimited
         params['limit'] = None
         func = adapter.downloadFile(
             townFile, headers=False, extraParameters=params)
-        self.assertEqual(''.join([part for part in func()]), jsondata)
+        self.assertEqual(b''.join([part for part in func()]), jsondata)
         func = adapter.downloadFile(
             townFile, headers=False,
             extraParameters=urllib.parse.urlencode(params))
-        self.assertEqual(''.join([part for part in func()]), jsondata)
+        self.assertEqual(b''.join([part for part in func()]), jsondata)
         func = adapter.downloadFile(
             townFile, headers=False, extraParameters=json.dumps(params))
-        self.assertEqual(''.join([part for part in func()]), jsondata)
+        self.assertEqual(b''.join([part for part in func()]), jsondata)
         # filters can also be an object or tuple
         params['filters'] = json.loads(params['filters'])
         func = adapter.downloadFile(
             townFile, headers=False, extraParameters=params)
-        self.assertEqual(''.join([part for part in func()]), jsondata)
+        self.assertEqual(b''.join([part for part in func()]), jsondata)
         params['filters'] = tuple(params['filters'])
         func = adapter.downloadFile(
             townFile, headers=False, extraParameters=params)
-        self.assertEqual(''.join([part for part in func()]), jsondata)
+        self.assertEqual(b''.join([part for part in func()]), jsondata)
 
         # Test with group
         params['sort'] = [
@@ -566,33 +577,33 @@ class AssetstoreTest(base.TestCase):
         del params['filters']
         func = adapter.downloadFile(
             townFile, headers=False, extraParameters=params)
-        jsondata = ''.join([part for part in func()])
-        data = json.loads(jsondata)
+        jsondata = b''.join([part for part in func()])
+        data = json.loads(jsondata.decode('utf8'))
         self.assertEqual(data['datacount'], 5)
         self.assertEqual(data['data'][0][0], 'DEDHAM')
         self.assertEqual(data['data'][0][2], 2)
         self.assertEqual(data['data'][4][0], 'ACTON')
         self.assertEqual(data['data'][4][2], 1)
 
+    def testAssetstoreOpen(self):
+        townItem, townFile, assetstore1 = self._createTownItem()
+        adapter = assetstore_utilities.getAssetstoreAdapter(assetstore1)
+        handle = adapter.open(townFile)
+        data = handle.read(200)
+        self.assertEqual(data[:2], b'{"')
+        data += handle.read(200)
+        self.assertNotEqual(data[:200], data[200:])
+        handle.seek(100)
+        data100 = handle.read(200)
+        self.assertEqual(data100, data[100:300])
+        handle.seek(-100, os.SEEK_END)
+        dataend = handle.read(200)
+        self.assertEqual(len(dataend), 100)
+        self.assertNotEqual(dataend, data[:100])
+
     def testAssetstoreFileCopy(self):
-        # Create assetstore
-        resp = self.request(path='/assetstore', method='POST', user=self.admin,
-                            params=self.dbParams)
-        self.assertStatusOk(resp)
-        assetstore1 = resp.json
-        # Import a tables from postgres
-        params = {
-            'parentId': str(self.publicFolder['_id']),
-            'parentType': 'folder',
-            'table': 'towns',
-        }
-        resp = self.request(
-            path='/database_assetstore/%s/import' % str(assetstore1['_id']),
-            method='PUT', user=self.admin, params=params)
-        self.assertStatusOk(resp)
-        townItem = list(self.model('item').textSearch('towns', user=self.admin,
-                                                      limit=1))[0]
-        townFile = list(self.model('item').childFiles(item=townItem))[0]
+        townItem, townFile, assetstore1 = self._createTownItem()
+
         self.assertEqual(self.model('item').childFiles(item=townItem).count(),
                          1)
         resp = self.request(path='/file/%s/copy' % str(townFile['_id']),
