@@ -31,6 +31,8 @@ from . import base
 from .base import DatabaseConnectorException
 
 
+MAX_SCHEMAS_IN_TABLE_LIST = 25
+
 DatabaseOperators = {
     'eq': '=',
     'ne': '!=',
@@ -63,7 +65,7 @@ def adjustDBUrl(url):
 
 def getEngine(url, **kwargs):
     """
-    Get a sqlalchem engine from a pool in case we use the same parameters for
+    Get a sqlalchemy engine from a pool in case we use the same parameters for
     multiple connections.
     """
     key = (url, frozenset(six.viewitems(kwargs)))
@@ -274,7 +276,7 @@ class SQLAlchemyConnector(base.DatabaseConnector):
             # still have side effects (for instance, setseed() changes the
             # state for generating random numbers which could have
             # cryptographic implications).
-            sess.execute('set default_transaction_read_only=on')
+            self.setSessionReadOnly(sess)
         if client:
             if client not in self.sessions:
                 self.sessions[client] = {}
@@ -296,6 +298,15 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         else:
             # Close the session.  sqlalchemy keeps them too long otherwise
             db.close()
+
+    def setSessionReadOnly(self, sess):
+        """
+        Set the specified session to read only if possible.  Subclasses should
+        implement the appropriate behavior.
+
+        :param sess: the session to adjust.
+        """
+        pass
 
     def getFieldInfo(self):
         """
@@ -348,17 +359,20 @@ class SQLAlchemyConnector(base.DatabaseConnector):
                        for view in insp.get_view_names()])
         databaseName = base.databaseFromUri(url)
         results = [{'database': databaseName, 'tables': tables}]
-        for schema in schemas:
-            if not internalTables and schema.lower() == 'information_schema':
-                continue
-            if schema != defaultSchema:
-                tables = [{'name': '%s.%s' % (schema, table),
-                           'table': table, 'schema': schema}
-                          for table in dbEngine.table_names(schema=schema)]
-                tables.extend([{'name': '%s.%s' % (schema, view),
-                                'table': view, 'schema': schema}
-                               for view in insp.get_view_names(schema=schema)])
-                results[0]['tables'].extend(tables)
+        if len(schemas) <= MAX_SCHEMAS_IN_TABLE_LIST:
+            for schema in schemas:
+                if not internalTables and schema.lower() == 'information_schema':
+                    continue
+                if schema != defaultSchema:
+                    tables = [{'name': '%s.%s' % (schema, table),
+                               'table': table, 'schema': schema}
+                              for table in dbEngine.table_names(schema=schema)]
+                    tables.extend([{'name': '%s.%s' % (schema, view),
+                                    'table': view, 'schema': schema}
+                                   for view in insp.get_view_names(schema=schema)])
+                    results[0]['tables'].extend(tables)
+        else:
+            log.info('Not enumerating all schemas for table list (%d schemas)', len(schemas))
         return results
 
     def performSelect(self, fields, queryProps={}, filters=[], client=None):

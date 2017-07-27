@@ -5,4 +5,5 @@ add_python_style_test(python_static_analysis_${_pluginName}_tests "${_pluginDir}
 
 add_python_test(assetstore PLUGIN database_assetstore BIND_SERVER EXTERNAL_DATA "plugins/database_assetstore/testdb.sql.gz")
 add_python_test(dbs_mongo PLUGIN database_assetstore BIND_SERVER EXTERNAL_DATA "plugins/database_assetstore/mongodb.permits.json.bz2")
+add_python_test(dbs_mysql PLUGIN database_assetstore BIND_SERVER)
 add_python_test(file PLUGIN database_assetstore BIND_SERVER EXTERNAL_DATA "plugins/database_assetstore/testdb.sql.gz")

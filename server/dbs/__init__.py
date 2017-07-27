@@ -22,12 +22,13 @@ from .base import (
     clearDBConnectorCache, FilterOperators, DatabaseConnectorException,
     databaseFromUri, DatabaseConnector)
 from . import sqlalchemydb
+from . import mysql_sqlalchemy
 from . import postgres_sqlalchemy
 from . import mongo
 
 __all__ = [
     'getDBConnectorClass', 'getDBConnector', 'getDBConnectorClassFromDialect',
     'clearDBConnectorCache', 'FilterOperators', 'DatabaseConnectorException',
-    'databaseFromUri', 'sqlalchemydb', 'postgres_sqlalchemy', 'mongo',
-    'DatabaseConnector',
+    'databaseFromUri', 'DatabaseConnector', 'sqlalchemydb', 'mysql_sqlalchemy',
+    'postgres_sqlalchemy', 'mongo',
 ]
