@@ -144,27 +144,29 @@ class SqliteSAConnector(SQLAlchemyConnector):
         # The super class also validates the connector
         super(SqliteSAConnector, self).__init__(*args, **kwargs)
         self.databaseName = kwargs.get(
-            'database', base.databaseFromUri(kwargs.get('url')))
+            'database', base.databaseFromUri(kwargs.get('uri')))
         self.databaseOperators = SqliteOperators
         self._allowedFunctions = SqliteFunctions
 
     @classmethod
-    def adjustDBUrl(cls, url, *args, **kwargs):
+    def adjustDBUri(cls, uri, *args, **kwargs):
         """
-        Adjust a url to match the form sqlite requires.  This can covnert a
+        Adjust a uri to match the form sqlite requires.  This can convert a
         Girder resource path to an aprpopriate physical file reference.
 
-        :param url: the url to adjust.
-        :returns: the adjusted url
+        :param uri: the uri to adjust.
+        :returns: the adjusted uri
         """
-        url = super(SqliteSAConnector, cls).adjustDBUrl(url, *args, **kwargs)
+        if '://' in uri:
+            uri = uri.split('://', 1)[0] + ':////' + uri.split('://', 1)[1].lstrip('/')
+        uri = super(SqliteSAConnector, cls).adjustDBUri(uri, *args, **kwargs)
         # If we have a Girder resource path, convert it.  If this looks like a
         # file but doesn't exist, check if it is a resource path.  If this is
         # not a resoruce path to a file that we can read directly, treat this
         # the same as a missing file.
-        if (':///' in url and not os.path.exists(url.split(':///')[1])):
+        if (':///' in uri and not os.path.exists(uri.split(':///', 1)[1])):
             resourcepath = path_util.lookUpPath(
-                url.split(':///')[1], test=True, filter=False, force=True)
+                uri.split(':///', 1)[1], test=True, filter=False, force=True)
             if resourcepath and resourcepath['model'] == 'file':
                 file = resourcepath['document']
                 fileModel = ModelImporter.model('file')
@@ -172,9 +174,23 @@ class SqliteSAConnector(SQLAlchemyConnector):
                 if hasattr(adapter, 'fullPath'):
                     filepath = adapter.fullPath(file)
                     if os.path.exists(filepath):
-                        url = url.split(':///')[0] + ':///' + filepath
+                        uri = uri.split(':///', 1)[0] + ':///' + filepath
                         log.debug('Using Girder file for SQLite database')
-        return url
+        return uri
+
+    @classmethod
+    def canonicalDatabaseUri(cls, uri):
+        """
+        Adjust a database uri to a canonical form.
+
+        :param uri: the proposed uri.
+        :returns: the adjusted uri.
+        """
+        # make sure we start with (dialect):///(absolute path) where the
+        # absolute path starts with a slash.
+        if '://' in uri:
+            uri = uri.split('://', 1)[0] + ':////' + uri.split('://', 1)[1].lstrip('/')
+        return uri
 
     def connect(self, *args, **kwargs):
         """

@@ -411,7 +411,7 @@ def queryDatabase(idOrConnector, dbinfo, params):
     :param idOrConnector: either an id used to cache the DB connector, or a
         connector that is derived from the DatabaseConnector class.
     :param dbinfo: a dictionary of connection information for the db.  Needs
-        type, url, and either table or connection.  Ignored if a connector is
+        type, uri, and either table or connection.  Ignored if a connector is
         provided.
     :param params: query parameters.  See the select endpoint for
         documentation.
