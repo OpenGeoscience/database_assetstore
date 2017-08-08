@@ -101,6 +101,7 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
             info['uri'] = '%s://%s' % (validatedDialect, info['uri'])
         info['dbtype'] = validatedDbtype
         connClass = dbs.getDBConnectorClass(info['dbtype'])
+        info['uri'] = connClass.canonicalDatabaseUri(info['uri'])
         if connClass.databaseNameRequired and not dbs.databaseFromUri(info['uri']):
             raise ValidationException(
                 'The specified database uri must include the database name.')
@@ -437,7 +438,7 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
         """
         dbinfo = {
             'type': self.assetstore['database']['dbtype'],
-            'url': self.assetstore['database']['uri'],
+            'uri': self.assetstore['database']['uri'],
         }
         schema = None
         if table and '.' in table:
@@ -486,7 +487,7 @@ def getDbInfoForFile(file, assetstore=None):
         return None
     dbinfo = {
         'type': assetstore['database']['dbtype'],
-        'url': assetstore['database']['uri'],
+        'uri': assetstore['database']['uri'],
         'table': file[DB_INFO_KEY]['table'],
         'collection': file[DB_INFO_KEY]['table']
 
