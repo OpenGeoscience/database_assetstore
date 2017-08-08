@@ -227,8 +227,8 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         :return: a SQLAlchemny session object.
         """
         if not self.dbEngine:
-            self.dbEngine = getEngine(self.databaseUrl, **self.dbparams)
-            metadata = sqlalchemy.MetaData(self.dbEngine)
+            engine = getEngine(self.databaseUri, **self.dbparams)
+            metadata = sqlalchemy.MetaData(engine)
             table = sqlalchemy.Table(self.table, metadata, schema=self.schema,
                                      autoload=True)
 
@@ -247,6 +247,7 @@ class SQLAlchemyConnector(base.DatabaseConnector):
 
             sqlalchemy.orm.mapper(
                 self.tableClass, table, primary_key=fallbackPrimaryCol)
+            self.dbEngine = engine
         # If we are asking for a specific client, clean up defunct clients
         curtime = time.time()
         if client:
