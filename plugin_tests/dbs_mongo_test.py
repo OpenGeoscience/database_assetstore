@@ -44,7 +44,7 @@ class DbsMongoTest(base.TestCase):
         'name': 'Assetstore 1',
         'type': 'database',  # AssetstoreType.DATABASE
         'dburi': os.environ.get('GIRDER_DATABASE_ASSETSTORE_MONGO_DB',
-                                'mongodb://127.0.0.1/boston/permits'),
+                                'mongodb://127.0.0.1/boston'),
     }
 
     def setUp(self):

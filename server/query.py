@@ -232,7 +232,8 @@ def convertSelectDataToRawlist(result, *args, **kargs):
 def csv_safe_unicode(row, ignoreErrors=True):
     """
     Given an array of values, make sure all strings are unicode in Python 3 and
-    str in Python 2.
+    str in Python 2.  The csv.writer in Python 2 does not handle unicode
+    strings and in Python 3 it does not handle byte strings.
 
     :param row: an array which could contain mixed types.
     :param ignoreErrors: if True, convert what is possible and ignore errors.
@@ -241,12 +242,17 @@ def csv_safe_unicode(row, ignoreErrors=True):
         strings converted to unicode in Python 3 or str in Python 2.
     """
     # This is unicode in Python 2 and bytes in Python 3
-    not_str = six.text_type if str == six.binary_type else six.binary_type
-    if not any([isinstance(value, not_str) for value in row]):
+    wrong_type = six.text_type if str == six.binary_type else six.binary_type
+    # If all of the data is not the wrong type, just return it as is.  This
+    # allows non-string types, such as integers and floats.
+    if not any(isinstance(value, wrong_type) for value in row):
         return row
+    # Convert the wrong type of string to the type needed for this version of
+    # Python.  For Python 2 unicode gets encoded to str (bytes).  For Python 3
+    # bytes get decoded to str (unicode).
     func = 'encode' if str == six.binary_type else 'decode'
     row = [getattr(value, func)('utf8', 'ignore' if ignoreErrors else 'strict')
-           if isinstance(value, not_str) else value for value in row]
+           if isinstance(value, wrong_type) else value for value in row]
     return row
 
 

@@ -135,6 +135,6 @@ Here is example of a filter with a nested function (using PostGIS functions):
 SQLite on Files Stored in Girder
 --------------------------------
 
-SQLite works with files rather than a database server.  To specify a file that is in Girder's local file system, use a Database URI of ``sqlite:////<absolute path to file>``.  Note that four slashes are necessary (e.g., ``sqlite:////home/pliny/natural_history/zoology.db``).
+SQLite works with files rather than a database server.  To specify a file that is in Girder's local file system, use a Database URI of ``sqlite://<absolute path to file>`` (e.g., ``sqlite:///home/pliny/natural_history/zoology.db``).
 
-SQLLite can also work with files stored in a Girder filesystem assetstore.  Instead of a local file path, use a Girder resource path.  This will be of the form ``sqlite:////<'user' or 'collection'>/<user or collection name>/<folder name>/[<subfolder name>/ ...]<item name>/<file name>``.  For example ``sqlite:////user/pliny/Public/Natural History/zoology.db/zoology.db``.
+SQLLite can also work with files stored in a Girder filesystem assetstore.  Instead of a local file path, use a Girder resource path.  This will be of the form ``sqlite:///<'user' or 'collection'>/<user or collection name>/<folder name>/[<subfolder name>/ ...]<item name>/<file name>``.  For example ``sqlite:///user/pliny/Public/Natural History/zoology.db/zoology.db``.
