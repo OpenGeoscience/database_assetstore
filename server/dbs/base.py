@@ -186,6 +186,16 @@ class DatabaseConnector(object):
         self.allowSortFunctions = False
         self.allowFilterFunctions = False
 
+    @classmethod
+    def canonicalDatabaseUri(cls, uri):
+        """
+        Adjust a database uri to a canonical form.
+
+        :param uri: the proposed uri.
+        :returns: the adjusted uri.
+        """
+        return uri
+
     def checkOperatorDatatype(self, field, operator, fieldList=None):
         """
         Check if the specified operator is allowed on a specific field,
@@ -218,7 +228,7 @@ class DatabaseConnector(object):
         return []
 
     @staticmethod
-    def getTableList(url, internalTables=False, **kwargs):
+    def getTableList(uri, internalTables=False, **kwargs):
         """
         Get a list of known databases, each of which has a list of known tables
         from the database.  This is of the form [{'database': (database 1),
@@ -226,7 +236,7 @@ class DatabaseConnector(object):
         Each table entry is of the form {'table': (table 1), 'name': (name 1)}
         and may contain additonal connection information, such as schema.
 
-        :param url: url to connect to the database.
+        :param uri: uri to connect to the database.
         :param internaltables: True to return tables about the database itself.
         :returns: A list of known tables.
         """
@@ -394,11 +404,16 @@ def databaseFromUri(uri):
     Extract the name of the database from the database connection uri.  If
     there is no database, return None.  The uri is of the form
     (dialect)://[(user name)[:(password)]@](server)[:(port)]
-    [/[(database)[/]]][?(options)]
+    [/[(database)[/]]][?(options)] or (dialect):///(path)
 
     :param uri: the database connection uri.
     :returns: the name of the database or None.
     """
+    if ':///' in uri:
+        parts = uri.split(':///', 1)[-1].split('/')
+        if not parts[-1]:
+            return None
+        return parts[-1]
     parts = uri.split('://', 1)[-1].split('/')
     if len(parts) < 2 or not parts[1]:
         return None

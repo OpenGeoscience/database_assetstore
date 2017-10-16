@@ -21,7 +21,7 @@ You can create an assetstore that references a database, and import Girder 'file
 
 Alternately, the database assetstore file can be acted on directly.
 
-Mongo and Postgres databases are supported fully.  Additional sql varients are supported if the appropriate sqlalchemy python modules are installed.
+Mongo, MySQL, Postgres, and SQLite databases are supported fully.  Additional sql varients are supported if the appropriate sqlalchemy python modules are installed.
 
 The ``POST`` ``file/{id}/database`` endpoint sets the default query parameters for the database table connection, including fields, filters, sort, format, and limit.  These are of the same form as used in the ``select`` endpoint.
 
@@ -132,4 +132,9 @@ Here is example of a filter with a nested function (using PostGIS functions):
 
 ``[{"func": "st_intersects", "param": [{"func": "st_setsrid", "param": [{"func": "st_makepoint", "param": [-72, 42.36]}, 4326]}, {"func": "st_transform", "param": [{"field": "geom"}, 4326]}], "operator": "is", "value": true}]``
 
+SQLite on Files Stored in Girder
+--------------------------------
 
+SQLite works with files rather than a database server.  To specify a file that is in Girder's local file system, use a Database URI of ``sqlite://<absolute path to file>`` (e.g., ``sqlite:///home/pliny/natural_history/zoology.db``).
+
+SQLLite can also work with files stored in a Girder filesystem assetstore.  Instead of a local file path, use a Girder resource path.  This will be of the form ``sqlite:///<'user' or 'collection'>/<user or collection name>/<folder name>/[<subfolder name>/ ...]<item name>/<file name>``.  For example ``sqlite:///user/pliny/Public/Natural History/zoology.db/zoology.db``.

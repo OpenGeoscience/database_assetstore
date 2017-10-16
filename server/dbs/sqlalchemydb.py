@@ -47,31 +47,15 @@ _enginePool = {}
 _enginePoolMaxSize = 5
 
 
-def adjustDBUrl(url):
-    """
-    Adjust a url to match the form sqlalchemy requires.  In general, the url is
-    of the form dialect+driver://username:password@host:port/database.
-
-    :param url: the url to adjust.
-    :returns: the adjusted url
-    """
-    # The below code is disabled until a test can be made where it works.
-    # sqlalchemy doesn't seem to permit this without some additional module
-    # If the prefix is sql://, use the default generic-sql dialect
-    # if url.startswith('sql://'):
-    #     url = url.split('sql://', 1)[1]
-    return url
-
-
-def getEngine(url, **kwargs):
+def getEngine(uri, **kwargs):
     """
     Get a sqlalchemy engine from a pool in case we use the same parameters for
     multiple connections.
     """
-    key = (url, frozenset(six.viewitems(kwargs)))
+    key = (uri, frozenset(six.viewitems(kwargs)))
     engine = _enginePool.get(key)
     if engine is None:
-        engine = sqlalchemy.create_engine(url, **kwargs)
+        engine = sqlalchemy.create_engine(uri, **kwargs)
         if len(_enginePool) >= _enginePoolMaxSize:
             _enginePoolMaxSize.clear()
         _enginePool[key] = engine
@@ -90,7 +74,7 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         # dbparams can include values in http://www.postgresql.org/docs/
         #   current/static/libpq-connect.html#LIBPQ-PARAMKEYWORDS
         self.dbparams = kwargs.get('dbparams', {})
-        self.databaseUrl = adjustDBUrl(kwargs.get('url'))
+        self.databaseUri = self.adjustDBUri(kwargs.get('uri'))
 
         # Additional parameters:
         #  idletime: seconds after which a connection is considered idle
@@ -216,6 +200,24 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         """
         return self._allowedFunctions.get(proname, False)
 
+    @classmethod
+    def adjustDBUri(cls, uri):
+        """
+        Adjust a uri to match the form sqlalchemy requires.  In general, the
+        uri is of the form
+        dialect+driver://username:password@host:port/database.
+
+        :param uri: the uri to adjust.
+        :returns: the adjusted uri
+        """
+        # The below code is disabled until a test can be made where it works.
+        # sqlalchemy doesn't seem to permit this without some additional
+        # module.
+        #   If the prefix is sql://, use the default generic-sql dialect:
+        # if uri.startswith('sql://'):
+        #     uri = uri.split('sql://', 1)[1]
+        return uri
+
     def connect(self, client=None):
         """
         Connect to the database.
@@ -227,7 +229,7 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         :return: a SQLAlchemny session object.
         """
         if not self.dbEngine:
-            self.dbEngine = getEngine(self.databaseUrl, **self.dbparams)
+            self.dbEngine = getEngine(self.databaseUri, **self.dbparams)
             metadata = sqlalchemy.MetaData(self.dbEngine)
             table = sqlalchemy.Table(self.table, metadata, schema=self.schema,
                                      autoload=True)
@@ -336,19 +338,19 @@ class SQLAlchemyConnector(base.DatabaseConnector):
             self.fields = fields
         return fields
 
-    @staticmethod
-    def getTableList(url, internalTables=False, dbparams={}, **kwargs):
+    @classmethod
+    def getTableList(cls, uri, internalTables=False, dbparams={}, **kwargs):
         """
         Get a list of known databases, each of which has a list of known tables
         from the database.  This is of the form [{'database': (database),
         'tables': [{'schema': (schema), 'table': (table 1)}, ...]}]
 
-        :param url: url to connect to the database.
+        :param uri: uri to connect to the database.
         :param internaltables: True to return tables about the database itself.
         :param dbparams: optional parameters to send to the connection.
         :returns: A list of known tables.
         """
-        dbEngine = sqlalchemy.create_engine(adjustDBUrl(url), **dbparams)
+        dbEngine = sqlalchemy.create_engine(cls.adjustDBUri(uri), **dbparams)
         insp = sqlalchemy.engine.reflection.Inspector.from_engine(dbEngine)
         schemas = insp.get_schema_names()
         defaultSchema = insp.default_schema_name
@@ -357,7 +359,7 @@ class SQLAlchemyConnector(base.DatabaseConnector):
                   for table in dbEngine.table_names()]
         tables.extend([{'name': view, 'table': view}
                        for view in insp.get_view_names()])
-        databaseName = base.databaseFromUri(url)
+        databaseName = base.databaseFromUri(uri)
         results = [{'database': databaseName, 'tables': tables}]
         if len(schemas) <= MAX_SCHEMAS_IN_TABLE_LIST:
             for schema in schemas:
@@ -455,7 +457,7 @@ class SQLAlchemyConnector(base.DatabaseConnector):
 
         :returns: True if the arguments should allow connecting to the db.
         """
-        if not table or not kwargs.get('url'):
+        if not table or not kwargs.get('uri'):
             return False
         # We could validate other database parameters, too
         return True

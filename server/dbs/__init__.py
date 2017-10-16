@@ -24,11 +24,12 @@ from .base import (
 from . import sqlalchemydb
 from . import mysql_sqlalchemy
 from . import postgres_sqlalchemy
+from . import sqlite_sqlalchemy
 from . import mongo
 
 __all__ = [
     'getDBConnectorClass', 'getDBConnector', 'getDBConnectorClassFromDialect',
     'clearDBConnectorCache', 'FilterOperators', 'DatabaseConnectorException',
     'databaseFromUri', 'DatabaseConnector', 'sqlalchemydb', 'mysql_sqlalchemy',
-    'postgres_sqlalchemy', 'mongo',
+    'postgres_sqlalchemy', 'sqlite_sqlalchemy', 'mongo',
 ]

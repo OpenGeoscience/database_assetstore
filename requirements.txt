@@ -8,3 +8,4 @@ sqlalchemy>=1.1.11
 mysqlclient>=1.3.10
 # Only necessary if you are using Postgres
 psycopg2>=2.7.1
+# SQLite does not require any additional modules

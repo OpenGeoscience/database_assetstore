@@ -51,9 +51,9 @@ class MongoConnector(base.DatabaseConnector):
     def __init__(self, *args, **kwargs):
         super(MongoConnector, self).__init__(*args, **kwargs)
         self.collection = kwargs.get('collection', kwargs.get('table'))
-        self.databaseUrl = kwargs.get('url')
+        self.databaseUri = kwargs.get('uri')
         self.databaseName = kwargs.get(
-            'database', base.databaseFromUri(self.databaseUrl))
+            'database', base.databaseFromUri(self.databaseUri))
 
         self.fieldInfo = None
 
@@ -109,7 +109,7 @@ class MongoConnector(base.DatabaseConnector):
 
         :returns: the mongo collection.
         """
-        self.conn = MongoClient(self.databaseUrl)
+        self.conn = MongoClient(self.databaseUri)
         self.database = self.conn[self.databaseName]
         return self.database[self.collection]
 
@@ -215,7 +215,7 @@ class MongoConnector(base.DatabaseConnector):
         return self.fieldInfo
 
     @staticmethod
-    def getTableList(url, internalTables=False, **kwargs):
+    def getTableList(uri, internalTables=False, **kwargs):
         """
         Get a list of known databases, each of which has a list of known
         collections from the database.  This is of the form [{'database':
@@ -223,16 +223,13 @@ class MongoConnector(base.DatabaseConnector):
         (collection 2)}, ...]}, {'database': (database 2), 'tables': [...]},
         ...]
 
-        :param url: url to connect to the database.
-        :returns: A list of known tables.
-
-        :param url: url to connect to the database.
+        :param uri: uri to connect to the database.
         :param internaltables: True to return tables about the database itself.
             Ignored for Mongo.
         :returns: A list of known collections.
         """
-        conn = MongoClient(url)
-        databaseName = base.databaseFromUri(url)
+        conn = MongoClient(uri)
+        databaseName = base.databaseFromUri(uri)
         if databaseName is None:
             databaseNames = conn.database_names()
         else:
@@ -248,14 +245,14 @@ class MongoConnector(base.DatabaseConnector):
         return results
 
     @staticmethod
-    def validate(url=None, database=None, collection=None, **kwargs):
+    def validate(uri=None, database=None, collection=None, **kwargs):
         """
         Validate that the passed arguments are sufficient for connecting to the
         database.
 
         :returns: True if the arguments should allow connecting to the db.
         """
-        return url and collection
+        return uri and collection
 
     @staticmethod
     def jsonDumps(*args, **kwargs):
