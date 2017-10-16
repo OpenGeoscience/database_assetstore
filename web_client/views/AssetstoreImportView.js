@@ -90,6 +90,7 @@ var DbAssetStoreImportView = View.extend({
             assetstore: this.model,
             tableList: this.tableList
         }));
+        return this;
     },
 
     _openBrowser: function () {
