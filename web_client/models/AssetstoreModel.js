@@ -6,7 +6,7 @@ import { restRequest } from 'girder/rest';
  */
 AssetstoreModel.prototype.databaseImport = function (params) {
     return restRequest({
-        path: 'database_assetstore/' + this.get('_id') + '/import',
+        url: 'database_assetstore/' + this.get('_id') + '/import',
         type: 'PUT',
         data: params,
         error: null
@@ -19,7 +19,7 @@ AssetstoreModel.prototype.databaseImport = function (params) {
 
 AssetstoreModel.prototype.databaseGetTables = function (params) {
     return restRequest({
-        path: 'database_assetstore/' + this.get('_id') + '/tables',
+        url: 'database_assetstore/' + this.get('_id') + '/tables',
         type: 'GET',
         data: params,
         error: null

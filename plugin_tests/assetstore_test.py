@@ -636,7 +636,7 @@ class AssetstoreTest(base.TestCase):
         # Test with non-database assetstore
         resp = self.request(path='/assetstore', method='GET', user=self.admin)
         self.assertStatusOk(resp)
-        self.assertEqual(1, len(resp.json))
+        self.assertEqual(2, len(resp.json))
         assetstore1 = resp.json[0]
         self.assertIsNone(assetstore.validateFile(
             {DB_INFO_KEY: {}, 'assetstoreId': str(assetstore1['_id'])}))

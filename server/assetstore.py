@@ -17,6 +17,7 @@
 #  limitations under the License.
 #############################################################################
 
+from bson.objectid import ObjectId
 import cherrypy
 import json
 import six
@@ -35,6 +36,11 @@ from .query import dbFormatList, queryDatabase, preferredFormat
 
 
 DB_INFO_KEY = 'databaseMetadata'
+# This is a quasi-random ObjectID with an 'old' date
+DB_ASSETSTORE_ID = '4b3d3b0193371b154c68f931'
+DB_ASSETSTORE_ObjectId = ObjectId(DB_ASSETSTORE_ID)
+DB_ASSETSTORE_USER_NAME = 'User-authorized Database Assetstore'
+DB_ASSETSTORE_USER_TYPE = 'USER'
 
 
 class DatabaseAssetstoreFile(dict):
@@ -86,10 +92,12 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
         # Ensure that the assetstore is marked read-only
         doc['readOnly'] = True
         info = doc.get('database', {})
+        dbtype = info.get('dbtype')
+        if dbtype == DB_ASSETSTORE_USER_TYPE:
+            return
         uri = info.get('uri')
         if not uri:
             raise ValidationException('Missing uri field.')
-        dbtype = info.get('dbtype')
         dialect = uri.split('://', 1)[0] if '://' in uri else dbtype
         validatedDialect, validatedDbtype = dbs.getDBConnectorClassFromDialect(
             dialect, dbtype)

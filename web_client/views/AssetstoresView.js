@@ -1,4 +1,3 @@
-import $ from 'jquery';
 import _ from 'underscore';
 
 import AssetstoresView from 'girder/views/body/AssetstoresView';
@@ -18,8 +17,13 @@ wrap(AssetstoresView, 'render', function (render) {
     var selector = '.g-assetstore-info-section[assetstore-type="' + AssetstoreType.DATABASE + '"]';
 
     _.each(this.$(selector), function (el) {
-        var $el = $(el),
+        var $el = this.$(el),
             assetstore = this.collection.get($el.attr('cid'));
+        // don't list the user-authorized assetstore
+        if ((assetstore.get('database') || {}).dbtype === 'USER') {
+            $el.closest('.g-assetstore-container').remove();
+            return;
+        }
         $el.append(AssetstoreInfoTemplate({
             assetstore: assetstore
         }));
