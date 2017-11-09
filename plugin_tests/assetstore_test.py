@@ -25,6 +25,10 @@ from six.moves import urllib
 from girder import config
 from girder.constants import AssetstoreType, SettingKey
 from girder.models.model_base import GirderException
+from girder.models.file import File
+from girder.models.folder import Folder
+from girder.models.item import Item
+from girder.models.user import User
 from girder.utility import assetstore_utilities, progress
 from tests import base
 
@@ -61,17 +65,17 @@ class AssetstoreTest(base.TestCase):
             'password': 'goodpassword'
         })
         self.admin, self.user = [
-            self.model('user').createUser(**user) for user in users]
-        folders = self.model('folder').childFolders(
+            User().createUser(**user) for user in users]
+        folders = Folder().childFolders(
             self.admin, 'user', user=self.admin)
         for folder in folders:
             if folder['name'] == 'Public':
                 self.publicFolder = folder
             elif folder['name'] == 'Private':
                 self.privateFolder = folder
-        self.item1 = self.model('item').createItem(
+        self.item1 = Item().createItem(
             'item1', creator=self.admin, folder=self.publicFolder)
-        self.item2 = self.model('item').createItem(
+        self.item2 = Item().createItem(
             'item2', creator=self.admin, folder=self.publicFolder)
         # Define locations for the default assetstores
         self.dbParams = {
@@ -111,9 +115,8 @@ class AssetstoreTest(base.TestCase):
             path='/database_assetstore/%s/import' % str(assetstore1['_id']),
             method='PUT', user=self.admin, params=params)
         self.assertStatusOk(resp)
-        townItem = list(self.model('item').textSearch('towns', user=self.admin,
-                                                      limit=1))[0]
-        townFile = list(self.model('item').childFiles(item=townItem))[0]
+        townItem = list(Item().textSearch('towns', user=self.admin, limit=1))[0]
+        townFile = list(Item().childFiles(item=townItem))[0]
         return townItem, townFile, assetstore1
 
     def testAssetstoreCreate(self):
@@ -329,11 +332,10 @@ class AssetstoreTest(base.TestCase):
                 progress.noProgress, self.admin)
         # Change the file we made for towns to remove the marker that it was
         # imported to prvent import from updating it.
-        townItem = list(self.model('item').textSearch('towns', user=self.admin,
-                                                      limit=1))[0]
-        townFile = list(self.model('item').childFiles(item=townItem))[0]
+        townItem = list(Item().textSearch('towns', user=self.admin, limit=1))[0]
+        townFile = list(Item().childFiles(item=townItem))[0]
         del townFile['databaseMetadata']['imported']
-        self.model('file').save(townFile)
+        File().save(townFile)
         with self.assertRaises(GirderException):
             adapter.importData(
                 self.publicFolder, 'folder', {'tables': ['towns']},
@@ -357,11 +359,10 @@ class AssetstoreTest(base.TestCase):
             method='PUT', user=self.admin, params=params)
         self.assertStatusOk(resp)
         # Mark the towns database as not imported
-        townItem = list(self.model('item').textSearch('towns', user=self.admin,
-                                                      limit=1))[0]
-        townFile = list(self.model('item').childFiles(item=townItem))[0]
+        townItem = list(Item().textSearch('towns', user=self.admin, limit=1))[0]
+        townFile = list(Item().childFiles(item=townItem))[0]
         del townFile['databaseMetadata']['imported']
-        self.model('file').save(townFile)
+        File().save(townFile)
         # We shouldn't be allowed to delete towns
         with six.assertRaisesRegex(self, Exception,
                                    'Database assetstores are read only'):
@@ -369,7 +370,7 @@ class AssetstoreTest(base.TestCase):
                                 method='DELETE', user=self.admin)
         # If we remark it as imported, we can
         townFile['databaseMetadata']['imported'] = True
-        self.model('file').save(townFile)
+        File().save(townFile)
         resp = self.request(path='/item/%s' % str(townItem['_id']),
                             method='DELETE', user=self.admin)
         self.assertStatusOk(resp)
@@ -457,7 +458,7 @@ class AssetstoreTest(base.TestCase):
         self.assertLess(int(data['data'][0][1]), 100000)
         self.assertLess(int(data['data'][1][1]), int(data['data'][0][1]))
         # Test a direct call
-        townFile = list(self.model('item').childFiles(item=townItem))[0]
+        townFile = list(Item().childFiles(item=townItem))[0]
         adapter = assetstore_utilities.getAssetstoreAdapter(assetstore1)
         params = {
             'format': 'list',
@@ -604,13 +605,13 @@ class AssetstoreTest(base.TestCase):
     def testAssetstoreFileCopy(self):
         townItem, townFile, assetstore1 = self._createTownItem()
 
-        self.assertEqual(self.model('item').childFiles(item=townItem).count(),
+        self.assertEqual(Item().childFiles(item=townItem).count(),
                          1)
         resp = self.request(path='/file/%s/copy' % str(townFile['_id']),
                             method='POST', user=self.admin,
                             params={'itemId': str(townItem['_id'])})
         self.assertStatusOk(resp)
-        self.assertEqual(self.model('item').childFiles(item=townItem).count(),
+        self.assertEqual(Item().childFiles(item=townItem).count(),
                          2)
 
     def testEmptyDirectQuery(self):
@@ -675,8 +676,7 @@ class AssetstoreTest(base.TestCase):
         self.assertStatusOk(resp)
         self.assertIsNone(validateSettings(event, plugin_name))
         self.assertEqual(event.info['value'], [plugin_name])
-        townItem = list(self.model('item').textSearch('towns', user=self.admin,
-                                                      limit=1))[0]
+        townItem = list(Item().textSearch('towns', user=self.admin, limit=1))[0]
         resp = self.request(path='/item/%s' % str(townItem['_id']),
                             method='DELETE', user=self.admin)
         self.assertStatusOk(resp)

@@ -24,8 +24,11 @@ from six.moves import urllib
 
 from girder.constants import AssetstoreType
 from girder.models.model_base import GirderException, ValidationException
+from girder.models.assetstore import Assetstore
+from girder.models.file import File
+from girder.models.folder import Folder
+from girder.models.item import Item
 from girder.utility.abstract_assetstore_adapter import AbstractAssetstoreAdapter, FileHandle
-from girder.utility.model_importer import ModelImporter
 
 from . import dbs
 from .query import dbFormatList, queryDatabase, preferredFormat
@@ -336,9 +339,6 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
             with the items and files that were imported.
         """
         defaultDatabase = dbs.databaseFromUri(self.assetstore['database']['uri'])
-        itemModel = self.model('item')
-        fileModel = self.model('file')
-        folderModel = self.model('folder')
         response = []
         for table in params['tables']:
             if isinstance(table, six.string_types):
@@ -352,30 +352,30 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
                 folder = parent
             else:
                 folderName = dbinfo.get('database', defaultDatabase)
-                folder = folderModel.findOne({
+                folder = Folder().findOne({
                     'parentId': parent['_id'],
                     'name': folderName,
                     'parentCollection': parentType
                 })
                 if folder is None:
-                    folder = folderModel.createFolder(
+                    folder = Folder().createFolder(
                         parent, folderName, parentType=parentType,
                         creator=user)
             # Create an item if needed
-            item = itemModel.findOne({
+            item = Item().findOne({
                 'folderId': folder['_id'],
                 'name': name
             })
             if item is None:
-                item = itemModel.createItem(
+                item = Item().createItem(
                     name=name, creator=user, folder=folder)
             # Create a file if needed
-            file = fileModel.findOne({
+            file = File().findOne({
                 'name': name,
                 'itemId': item['_id']
             })
             if file is None:
-                file = fileModel.createFile(
+                file = File().createFile(
                     creator=user, item=item, name=name, size=0,
                     assetstore=self.assetstore,
                     mimeType=dbFormatList.get(preferredFormat(params.get(
@@ -411,7 +411,7 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
             for chunk in downloadFunc():
                 pass
             # Now save the new file
-            fileModel.save(file)
+            File().save(file)
             response.append({'item': item, 'file': file})
         return response
 
@@ -481,8 +481,7 @@ def getDbInfoForFile(file, assetstore=None):
     if DB_INFO_KEY not in file or 'assetstoreId' not in file:
         return None
     if assetstore is None:
-        assetstore = ModelImporter.model('assetstore').load(
-            file['assetstoreId'])
+        assetstore = Assetstore().load(file['assetstoreId'])
     if assetstore.get('type') != AssetstoreType.DATABASE:
         return None
     dbinfo = {
@@ -562,8 +561,7 @@ def validateFile(file):
     """
     if DB_INFO_KEY not in file or 'assetstoreId' not in file:
         return None
-    assetstore = ModelImporter.model('assetstore').load(
-        file['assetstoreId'])
+    assetstore = Assetstore().load(file['assetstoreId'])
     if assetstore.get('type') != AssetstoreType.DATABASE:
         return None
     if not file[DB_INFO_KEY].get('table'):
