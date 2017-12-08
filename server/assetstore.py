@@ -98,20 +98,17 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
         uri = info.get('uri')
         if not uri:
             raise ValidationException('Missing uri field.')
-        dialect = uri.split('://', 1)[0] if '://' in uri else dbtype
-        validatedDialect, validatedDbtype = dbs.getDBConnectorClassFromDialect(
-            dialect, dbtype)
+        validatedDialect, validatedDbtype = dbs.getDBConnectorClassFromDialect(uri)
         if validatedDbtype is None:
             if dbtype:
                 raise ValidationException(
                     'URI is not valid for dbtype %s.' % dbtype)
             raise ValidationException(
                 'Either specify dbtype or include a dialect in the URI.')
-        info['uri'] = uri.split('://', 1)[-1]
-        if validatedDialect:
+        if '://' not in info['uri'] and validatedDialect:
             info['uri'] = '%s://%s' % (validatedDialect, info['uri'])
         info['dbtype'] = validatedDbtype
-        connClass = dbs.getDBConnectorClass(info['dbtype'])
+        connClass = dbs.getDBConnectorClass(info['uri'])
         info['uri'] = connClass.canonicalDatabaseUri(info['uri'])
         if connClass.databaseNameRequired and not dbs.databaseFromUri(info['uri']):
             raise ValidationException(
@@ -444,9 +441,9 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
         :param overrideDbinfo: extra information that overrides the adapter's
             default information.
         """
+        uri = self.assetstore['database']['uri']  # ##DWM::
         dbinfo = {
-            'type': self.assetstore['database']['dbtype'],
-            'uri': self.assetstore['database']['uri'],
+            'uri': uri,
         }
         schema = None
         if table and '.' in table:
@@ -456,7 +453,7 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
         if schema:
             dbinfo['schema'] = schema
         dbinfo.update(overrideDbinfo)
-        connClass = dbs.getDBConnectorClass(dbinfo.get('type'))
+        connClass = dbs.getDBConnectorClass(dbinfo.get('uri'))
         conn = connClass(**dbinfo)
         return conn
 
@@ -492,9 +489,9 @@ def getDbInfoForFile(file, assetstore=None):
         assetstore = Assetstore().load(file['assetstoreId'])
     if assetstore.get('type') != AssetstoreType.DATABASE:
         return None
+    uri = assetstore['database']['uri']  # ##DWM::
     dbinfo = {
-        'type': assetstore['database']['dbtype'],
-        'uri': assetstore['database']['uri'],
+        'uri': uri,
         'table': file[DB_INFO_KEY]['table'],
         'collection': file[DB_INFO_KEY]['table']
 
@@ -536,9 +533,10 @@ def getTableList(assetstore, internalTables=False):
         information_schema tables).
     :returns: a list of known tables.
     """
-    cls = dbs.getDBConnectorClass(assetstore['database']['dbtype'])
+    uri = assetstore['database']['uri']  # ##DWM::
+    cls = dbs.getDBConnectorClass(uri)
     return cls.getTableList(
-        assetstore['database']['uri'],
+        uri,
         internalTables=internalTables,
         dbparams=assetstore['database'].get('dbparams', {}))
 

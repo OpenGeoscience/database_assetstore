@@ -1,12 +1,4 @@
 .form-group
-  label.control-label(for="g-edit-dbas-dbtype") Database Type
-  select#g-edit-dbas-dbtype.input-sm.form-control
-    option(value='mongo') MongoDB
-    option(value='sqlalchemy_mysql') MySQL
-    option(value='sqlalchemy_postgres') PostgreSQL
-    option(value='sqlalchemy_sqlite') SQLite
-    option(value='sqlalchemy') Generic SQL
-.form-group
   label.control-label(for="g-edit-dbas-dburi") Database URI
   input#g-edit-dbas-dburi.input-sm.form-control(
     type="text", placeholder="URI -- (dialect)://(user):(password)@(server):(port)/(database)?(options)")

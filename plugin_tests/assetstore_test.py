@@ -139,17 +139,11 @@ class AssetstoreTest(base.TestCase):
         self.assertStatus(resp, 400)
         self.assertIn('specify dbtype', resp.json['message'])
         altparams = self.dbParams.copy()
-        altparams['dbtype'] = 'mongo'
-        resp = self.request(path='/assetstore', method='POST', user=self.admin,
-                            params=altparams)
-        self.assertStatus(resp, 400)
-        self.assertIn('URI is not valid for dbtype', resp.json['message'])
-        altparams = self.dbParams.copy()
         altparams['dburi'] = os.environ.get('postgres@127.0.0.1/')
         resp = self.request(path='/assetstore', method='POST', user=self.admin,
                             params=altparams)
         self.assertStatus(resp, 400)
-        self.assertIn('must include the database name', resp.json['message'])
+        self.assertIn('URI is not valid', resp.json['message'])
         # Create the assetstore
         resp = self.request(path='/assetstore', method='POST', user=self.admin,
                             params=self.dbParams)
@@ -167,7 +161,7 @@ class AssetstoreTest(base.TestCase):
                             method='PUT', user=self.user, params=altparams)
         self.assertStatus(resp, 403)
         altparams = self.dbParams.copy()
-        altparams['dbtype'] = 'mongo'
+        altparams['dburi'] = os.environ.get('postgres@127.0.0.1/')
         altparams['current'] = False
         resp = self.request(path='/assetstore/' + str(assetstore['_id']),
                             method='PUT', user=self.admin, params=altparams)

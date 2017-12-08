@@ -23,11 +23,11 @@ form#g-database-assetstore-config-form(role='form')
     tbody
       if !rules.length
         tr
-          td.g-database-assetstore-empty(colspan=3) No rules defined (this is the same as (all groups) matching ".*").
+          td.g-database-assetstore-empty(colspan=3) No rules defined (this is the same as (all users) matching ".*").
       each rule, index in rules
         - var group = rule.groupId ? groupsById[rule.groupId] : null
         tr
-          td= rule.groupId ? (group ? group.get('name') : '(group no longer exists)') : '(all groups)'
+          td= rule.groupId ? (group ? group.get('name') : '(group no longer exists)') : '(all users)'
           td= rule.pattern
           td
             button.g-database-assetstore-remove.btn.btn-xs.btn-danger(title="Remove rule", data-index=index)
@@ -36,7 +36,7 @@ form#g-database-assetstore-config-form(role='form')
       tr
         td
           select#g-database-assetstore-group.form-control.input-sm
-            option(value='') (all groups)
+            option(value='') (all users)
             each group in groups
               option(value=group.get('_id'))= group.get('name')
         td
