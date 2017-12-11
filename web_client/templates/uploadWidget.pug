@@ -1,0 +1,11 @@
+include dbAssetstoreMixins
+
+a.btn.btn-small.btn-default.g-import-database
+  i.icon-database
+  |  Import Database
+#g-import-controls.form-group.hide
+  +g-dbas-uri
+  - multiple = multiFile;
+  - title = multiple ? 'Select the tables, views, or collections to import:' : 'Select the table, view, or collection to import:';
+  +g-dbas-import-tables
+  p#g-dbas-error.g-validation-failed-message

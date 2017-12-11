@@ -27,12 +27,15 @@ from girder.api.describe import describeRoute, Description
 from girder.api.rest import filtermodel, loadmodel, Resource, RestException, \
     boundHandler
 from girder.models.model_base import AccessType
+from girder.models.assetstore import Assetstore
 from girder.models.file import File
 from girder.utility import assetstore_utilities
 from girder.utility.progress import ProgressContext
 
-from . import assetstore, dbs
-from .assetstore import DB_INFO_KEY, getTableList
+from . import dbs
+from .assetstore import getTableList, checkUserImport, getDbInfoForFile, \
+    getQueryParamsForFile
+from .base import DB_ASSETSTORE_ID, DB_INFO_KEY
 from .query import DatabaseQueryException, dbFormatList, queryDatabase, \
     preferredFormat
 
@@ -96,7 +99,7 @@ def createDatabaseLink(self, file, params):
 @access.public
 @loadmodel(model='file', map={'id': 'file'}, level=AccessType.READ)
 def getDatabaseFields(self, file, params):
-    dbinfo = assetstore.getDbInfoForFile(file)
+    dbinfo = getDbInfoForFile(file)
     if not dbinfo:
         raise RestException('File is not a database link.')
     conn = dbs.getDBConnector(file['_id'], dbinfo)
@@ -118,7 +121,7 @@ def getDatabaseFields(self, file, params):
 @access.public
 @loadmodel(model='file', map={'id': 'file'}, level=AccessType.READ)
 def databaseRefresh(self, file, params):
-    dbinfo = assetstore.getDbInfoForFile(file)
+    dbinfo = getDbInfoForFile(file)
     if not dbinfo:
         raise RestException('File is not a database link.')
     result = dbs.clearDBConnectorCache(file['_id'])
@@ -219,10 +222,10 @@ def databaseRefresh(self, file, params):
 @access.public
 @loadmodel(model='file', map={'id': 'file'}, level=AccessType.READ)
 def databaseSelect(self, file, params):
-    dbinfo = assetstore.getDbInfoForFile(file)
+    dbinfo = getDbInfoForFile(file)
     if not dbinfo:
         raise RestException('File is not a database link.')
-    queryparams = assetstore.getQueryParamsForFile(file)
+    queryparams = getQueryParamsForFile(file)
     queryparams.update(params)
     try:
         resultFunc, mimeType = queryDatabase(
@@ -254,9 +257,12 @@ class DatabaseAssetstoreResource(Resource):
         super(DatabaseAssetstoreResource, self).__init__()
         self.resourceName = 'database_assetstore'
         self.route('GET', (':id', 'tables'), self.getTables)
+        self.route('GET', ('user', 'tables'), self.getTablesUser)
         self.route('PUT', (':id', 'import'), self.importData)
+        self.route('PUT', ('user', 'import'), self.importDataUser)
+        self.route('GET', ('user', 'import', 'allowed'), self.userImportAllowed)
 
-    def _parseTableList(self, tables, assetstore):
+    def _parseTableList(self, tables, assetstore, uri=None):
         """
         Given a list which can include plain strings and objects with optional
         database, name, and table, find the set of matching databases and
@@ -265,6 +271,7 @@ class DatabaseAssetstoreResource(Resource):
         :param tables: the input list of table names, '', objects with
             database and possibly name keys, and objects with a table key.
         :param assetstore: the assetstore document.
+        :param uri: the uri to use for a user-database.
         :returns: the list of table references with database and other
             parameters as needed.
         """
@@ -275,8 +282,8 @@ class DatabaseAssetstoreResource(Resource):
         tables = [table for table in tables if not table.get('table')]
         if not len(tables) and not all:
             return results
-        tableList = getTableList(assetstore)
-        defaultDatabase = dbs.databaseFromUri(assetstore['database']['uri'])
+        tableList = getTableList(assetstore, uri=uri)
+        defaultDatabase = dbs.databaseFromUri(uri if uri else assetstore['database']['uri'])
         for database in tableList:
             for tableEntry in database['tables']:
                 use = all
@@ -293,67 +300,22 @@ class DatabaseAssetstoreResource(Resource):
                     results.append(entry)
         return results
 
-    @access.admin
-    @loadmodel(model='assetstore')
-    @describeRoute(
-        Description('Get a list of tables or collections from a database.')
-        .notes('Only site administrators may use this endpoint.')
-        .param('id', 'The ID of the assetstore representing the Database.',
-               paramType='path')
-        .param('internal', 'True to include tables from the database '
-               'internals, such as postgres\'s information_schema.',
-               required=False, default=False, dataType='boolean')
-        .errorResponse()
-        .errorResponse('You are not an administrator.', 403)
-    )
-    def getTables(self, assetstore, params):
-        return getTableList(assetstore, params.get('internal'))
+    def _importData(self, assetstore, params):
+        """
+        Import to either a assetstore with a specific database or the generic
+        user assetstore.
 
-    @access.admin
-    @loadmodel(model='assetstore')
-    @describeRoute(
-        Description('Import tables (also called collections) from a database '
-                    'assetstore to files.')
-        .notes('Only site administrators may use this endpoint.')
-        .param('id', 'The ID of the assetstore representing the database(s).',
-               paramType='path')
-        .param('parentId', 'The ID of the parent folder, collection, or user '
-               'in the Girder data hierarchy under which to import the files.')
-        .param('parentType', 'The type of the parent object to import into.',
-               enum=('folder', 'user', 'collection'), required=False)
-        .param('table', 'The name of a single table, or a JSON list.  Each '
-               'entry of the list is either a table name, an object with '
-               '\'database\' and \'name\' keys, or an object with at least a '
-               '\'table\' key.  If a table key is specified, the entire '
-               'object is used as the specification for table routing.  '
-               'Otherwise, if a database is specified without a name, all '
-               'tables from the database are imported.  If not specified or '
-               'an empty string is in the list, the assetstore will be '
-               'inspected and all tables will be imported.', required=False)
-        .param('sort', 'The default sort to use.  Either a field name or a '
-               'JSON list of fields and directions.', required=False)
-        .param('fields', 'The default fields to return.', required=False)
-        .param('filters', 'The default filters to apply to the data.',
-               required=False)
-        .param('group', 'The default grouping to apply to the data.',
-               required=False)
-        .param('limit', 'The default limit of rows to return.  Use \'none\' '
-               'or a negative value to return all rows (0 returns 0 rows)',
-               required=False)
-        .param('format', 'The default format return.', required=False,
-               enum=list(dbFormatList))
-        .param('progress', 'Whether to record progress on this operation ('
-               'default=False)', required=False, dataType='boolean')
-        .errorResponse()
-        .errorResponse('You are not an administrator.', 403)
-    )
-    def importData(self, assetstore, params):
+        :param assetstore: the destination assetstore.
+        :param params: a dictionary of parameters including parentId,
+            parentType, table (possibly a list), sort, fields, filters, group,
+            limit, format, uri, progress, and replace.
+        """
         self.requireParams(('parentId'), params)
 
         user = self.getCurrentUser()
 
         parentType = params.get('parentType', 'folder')
-        if parentType not in ('user', 'collection', 'folder'):
+        if parentType not in ('user', 'collection', 'folder', 'item', 'file'):
             raise RestException('Invalid parentType.')
         parent = self.model(parentType).load(params['parentId'], force=True,
                                              exc=True)
@@ -377,7 +339,7 @@ class DatabaseAssetstoreResource(Resource):
                 raise RestException('The limit must be an integer or "none".')
         if '' in tables:
             tables = ['']
-        tables = self._parseTableList(tables, assetstore)
+        tables = self._parseTableList(tables, assetstore, params.get('uri'))
         if not len(tables):
             raise RestException(
                 'The list of tables must have at least one value.')
@@ -394,11 +356,148 @@ class DatabaseAssetstoreResource(Resource):
                 progress, user=user,
                 title='Importing data from Database assetstore') as ctx:
             adapter.importData(parent, parentType, {
+                'uri': params.get('uri'),
                 'tables': tables,
                 'sort': params.get('sort'),
                 'fields': params.get('fields'),
                 'filters': params.get('filters'),
                 'group': params.get('group'),
                 'limit': params.get('limit'),
-                'format': format
+                'format': format,
+                'replace': self.boolParam('replace', params, default=True),
                 }, ctx, user)
+
+    @access.admin
+    @loadmodel(model='assetstore')
+    @describeRoute(
+        Description('Get a list of tables or collections from a database.')
+        .notes('Only site administrators may use this endpoint.')
+        .param('id', 'The ID of the assetstore representing the Database.',
+               paramType='path')
+        .param('internal', 'True to include tables from the database '
+               'internals, such as postgres\'s information_schema.',
+               required=False, default=False, dataType='boolean')
+        .errorResponse()
+        .errorResponse('You are not an administrator.', 403)
+    )
+    def getTables(self, assetstore, params):
+        return getTableList(assetstore, internalTables=params.get('internal'))
+
+    @access.user
+    @describeRoute(
+        Description('Get a list of tables or collections from a database '
+                    'specified by a user.')
+        .param('uri', 'The URI of the database.', required=True)
+        .errorResponse()
+    )
+    def getTablesUser(self, params):
+        store = Assetstore().load(DB_ASSETSTORE_ID)
+        error = checkUserImport(self.getCurrentUser(), params['uri'])
+        if error:
+            raise RestException(error)
+        return getTableList(store, params['uri'], internalTables=params.get('internal'))
+
+    @access.admin
+    @loadmodel(model='assetstore')
+    @describeRoute(
+        Description('Import tables (also called collections) from a database '
+                    'assetstore to files.')
+        .notes('Only site administrators may use this endpoint.')
+        .param('id', 'The ID of the assetstore representing the database(s).',
+               paramType='path')
+        .param('parentId', 'The ID of the parent folder, collection, user, '
+               'item, or file in the Girder data hierarchy under which to '
+               'import the files.')
+        .param('parentType', 'The type of the parent object to import into.',
+               enum=('folder', 'user', 'collection', 'item', 'file'),
+               required=False)
+        .param('table', 'The name of a single table, or a JSON list.  Each '
+               'entry of the list is either a table name, an object with '
+               '\'database\' and \'name\' keys, or an object with at least a '
+               '\'table\' key.  If a table key is specified, the entire '
+               'object is used as the specification for table routing.  '
+               'Otherwise, if a database is specified without a name, all '
+               'tables from the database are imported.  If not specified or '
+               'an empty string is in the list, the assetstore will be '
+               'inspected and all tables will be imported.', required=False)
+        .param('sort', 'The default sort to use.  Either a field name or a '
+               'JSON list of fields and directions.', required=False)
+        .param('fields', 'The default fields to return.', required=False)
+        .param('filters', 'The default filters to apply to the data.',
+               required=False)
+        .param('group', 'The default grouping to apply to the data.',
+               required=False)
+        .param('limit', 'The default limit of rows to return.  Use \'none\' '
+               'or a negative value to return all rows (0 returns 0 rows)',
+               required=False)
+        .param('format', 'The default format return.', required=False,
+               enum=list(dbFormatList))
+        .param('progress', 'Whether to record progress on this operation ('
+               'default=False)', required=False, dataType='boolean')
+        .param('replace', 'Whether to replace existing items (default=True)',
+               required=False, dataType='boolean', default=True)
+        .errorResponse()
+        .errorResponse('You are not an administrator.', 403)
+    )
+    def importData(self, assetstore, params):
+        return self._importData(assetstore, params)
+
+    @access.user
+    @describeRoute(
+        Description('Import tables (also called collections) from a '
+                    'user-specified database to files.')
+        .param('uri', 'The URI of the database.', required=True)
+        .param('parentId', 'The ID of the parent folder, collection, user, '
+               'item, or file in the Girder data hierarchy under which to '
+               'import the files.')
+        .param('parentType', 'The type of the parent object to import into.',
+               enum=('folder', 'user', 'collection', 'item', 'file'),
+               required=False)
+        .param('table', 'The name of a single table, or a JSON list.  Each '
+               'entry of the list is either a table name, an object with '
+               '\'database\' and \'name\' keys, or an object with at least a '
+               '\'table\' key.  If a table key is specified, the entire '
+               'object is used as the specification for table routing.  '
+               'Otherwise, if a database is specified without a name, all '
+               'tables from the database are imported.  If not specified or '
+               'an empty string is in the list, the assetstore will be '
+               'inspected and all tables will be imported.', required=False)
+        .param('sort', 'The default sort to use.  Either a field name or a '
+               'JSON list of fields and directions.', required=False)
+        .param('fields', 'The default fields to return.', required=False)
+        .param('filters', 'The default filters to apply to the data.',
+               required=False)
+        .param('group', 'The default grouping to apply to the data.',
+               required=False)
+        .param('limit', 'The default limit of rows to return.  Use \'none\' '
+               'or a negative value to return all rows (0 returns 0 rows)',
+               required=False)
+        .param('format', 'The default format return.', required=False,
+               enum=list(dbFormatList))
+        .param('progress', 'Whether to record progress on this operation ('
+               'default=False)', required=False, dataType='boolean')
+        .param('replace', 'Whether to replace existing items (default=True)',
+               required=False, dataType='boolean', default=True)
+        .errorResponse()
+    )
+    def importDataUser(self, params):
+        store = Assetstore().load(DB_ASSETSTORE_ID)
+        error = checkUserImport(self.getCurrentUser(), params['uri'])
+        if error:
+            raise RestException(error)
+        return self._importData(store, params)
+
+    @access.user
+    @describeRoute(
+        Description('Check if the current user can import a database.')
+        .param('uri', 'The URI of the database.  If not specified, checks if '
+               'the user can import any databases.', required=False)
+        .errorResponse()
+    )
+    def userImportAllowed(self, params):
+        error = checkUserImport(
+            self.getCurrentUser(), params.get('uri'), validateUri=params.get('uri'))
+        result = {'allowed': not error}
+        if error:
+            result['reason'] = error
+        return result

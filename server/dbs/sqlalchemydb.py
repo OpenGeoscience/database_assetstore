@@ -215,6 +215,9 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         # rather than our specific sqlalchemy class.
         if uri.startswith('sqlalchemy:'):
             uri = uri.split('sqlalchemy:', 1)[1]
+        else:
+            dialect, _ = base.getDBConnectorClassFromDialect(uri)
+            uri = '%s://%s' % (dialect, uri.split('://', 1)[1])
         return uri
 
     def connect(self, client=None):

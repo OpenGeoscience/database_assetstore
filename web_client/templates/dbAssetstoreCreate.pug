@@ -1,3 +1,5 @@
+include dbAssetstoreMixins
+
 .panel.panel-default
   .panel-heading(
       data-toggle="collapse",
@@ -19,10 +21,7 @@
           input#g-new-dbas-name.input-sm.form-control(
               type="text",
               placeholder="Name")
-        .form-group(title='This is of the form [(dialect)://][(user name)[:(password)]@](server)[:(port)]/(database)[?(options)].  Dialect is one of mongodb, postgresql, sqlite, mysql, oracle, or mssql.  For example, postgresql://localhost/sampledb')
-          label.control-label(for="g-new-dbas-dburi") Database URI
-          input#g-new-dbas-dburi.input-sm.form-control(
-            type="text", placeholder="URI -- (dialect)://(user):(password)@(server):(port)/(database)?(options)")
+        +g-dbas-uri
         p#g-new-dbas-error.g-validation-failed-message
         input.g-new-assetstore-submit.btn.btn-sm.btn-primary(
           type="submit", value="Create")

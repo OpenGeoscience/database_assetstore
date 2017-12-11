@@ -618,7 +618,7 @@ class AssetstoreTest(base.TestCase):
     def testInvalidParameters(self):
         # Test conditions that should return None
         from girder.plugins.database_assetstore import assetstore
-        from girder.plugins.database_assetstore.assetstore import DB_INFO_KEY
+        from girder.plugins.database_assetstore.base import DB_INFO_KEY, DB_ASSETSTORE_ID
         self.assertIsNone(assetstore.getDbInfoForFile({}))
         self.assertIsNone(assetstore.getDbInfoForFile(
             {DB_INFO_KEY: {}, 'assetstoreId': 'unknown'}, {'type': 'unknown'}))
@@ -639,14 +639,13 @@ class AssetstoreTest(base.TestCase):
                             params=self.dbParams2)
         self.assertStatusOk(resp)
         assetstore1 = resp.json
-        with six.assertRaisesRegex(self, Exception,
-                                   'must have a non-blank database'):
+        with six.assertRaisesRegex(self, Exception, 'must have a non-blank'):
             self.assertIsNone(assetstore.validateFile({
                 DB_INFO_KEY: {'table': 'sample'},
-                'assetstoreId': str(assetstore1['_id'])}))
+                'assetstoreId': DB_ASSETSTORE_ID}))
 
     def testDisablingPluginWithActiveFiles(self):
-        from girder.plugins.database_assetstore import validateSettings
+        from girder.plugins.database_assetstore.base import validateSettings
         plugin_name = 'database_assetstore'
         # Create assetstores
         resp = self.request(path='/assetstore', method='POST', user=self.admin,
@@ -714,7 +713,7 @@ class AssetstoreTest(base.TestCase):
         tables = tableList[0]['tables']
         self.assertIn('towns', [table['name'] for table in tables])
         self.assertNotIn('information_schema.tables', [table['name'] for table in tables])
-        tableList = adapter.getTableList(True)
+        tableList = adapter.getTableList(internalTables=True)
         tables = tableList[0]['tables']
         self.assertIn('towns', [table['name'] for table in tables])
         self.assertIn('information_schema.tables', [table['name'] for table in tables])

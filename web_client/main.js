@@ -8,6 +8,7 @@ import './constants';
 import './views/AssetstoresView';
 import './views/EditAssetstoreWidget';
 import './views/NewAssetstoreWidget';
+import './views/UploadWidget';
 
 import { exposePluginConfig } from 'girder/utilities/PluginUtils';
 
