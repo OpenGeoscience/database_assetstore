@@ -25,7 +25,7 @@ from bson.objectid import ObjectId
 from six.moves import urllib
 
 from girder.constants import AssetstoreType
-from girder.models.model_base import GirderException, ValidationException
+from girder.exceptions import GirderException, ValidationException
 from girder.models.assetstore import Assetstore
 from girder.models.file import File
 from girder.models.folder import Folder

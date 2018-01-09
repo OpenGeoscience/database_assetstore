@@ -21,7 +21,7 @@ var DbAssetStoreImportView = View.extend({
                 entry = '';
                 if (value.indexOf('database:') === 0) {
                     entry = {};
-                    value = value.substr(9);  // remove 'database:'
+                    value = value.substr(9); // remove 'database:'
                     if (value.indexOf(':table:') >= 0) {
                         entry['name'] = value.substr(value.indexOf(':table:') + 7);
                         value = value.substr(0, value.indexOf(':table:'));

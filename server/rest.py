@@ -24,8 +24,8 @@ import six
 
 from girder.api import access
 from girder.api.describe import describeRoute, Description
-from girder.api.rest import filtermodel, loadmodel, Resource, RestException, \
-    boundHandler
+from girder.api.rest import filtermodel, loadmodel, Resource, boundHandler
+from girder.exceptions import RestException
 from girder.models.model_base import AccessType
 from girder.models.assetstore import Assetstore
 from girder.models.file import File

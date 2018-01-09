@@ -24,7 +24,7 @@ from six.moves import urllib
 
 from girder import config
 from girder.constants import AssetstoreType, SettingKey
-from girder.models.model_base import GirderException
+from girder.exceptions import GirderException
 from girder.models.file import File
 from girder.models.folder import Folder
 from girder.models.item import Item

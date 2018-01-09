@@ -19,7 +19,7 @@
 
 import time
 
-from girder.models.model_base import GirderException
+from girder.exceptions import GirderException
 
 
 FilterOperators = {

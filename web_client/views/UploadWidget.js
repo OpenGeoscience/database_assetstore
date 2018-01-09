@@ -43,7 +43,7 @@ function getTableList() {
         this._listTableXHR = null;
         this.$('.g-start-import').girderEnable(true);
     }).fail((resp, xhr) => {
-        if (xhr.status === 0) {  // aborted request, do nothing
+        if (xhr.status === 0) { // aborted request, do nothing
             return;
         }
         this.$('#g-dbas-table-name').empty();
@@ -66,7 +66,7 @@ function importTable() {
         entry = '';
         if (value.indexOf('database:') === 0) {
             entry = {};
-            value = value.substr(9);  // remove 'database:'
+            value = value.substr(9); // remove 'database:'
             if (value.indexOf(':table:') >= 0) {
                 entry['name'] = value.substr(value.indexOf(':table:') + 7);
                 value = value.substr(0, value.indexOf(':table:'));

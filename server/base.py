@@ -3,7 +3,7 @@ import jsonschema
 
 from girder import logger as log
 from girder.constants import AssetstoreType, SettingKey
-from girder.models.model_base import ValidationException
+from girder.exceptions import ValidationException
 from girder.models.assetstore import Assetstore
 from girder.utility import setting_utilities
 
