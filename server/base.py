@@ -42,6 +42,10 @@ class PluginSettings(object):
 
 @setting_utilities.validator(PluginSettings.USER_DATABASES)
 def _validateBoolean(doc):
+    if str(doc['value']).lower() in ('true', 'yes', '1'):
+        doc['value'] = True
+    if str(doc['value']).lower() in ('false', 'no', '0'):
+        doc['value'] = False
     if not isinstance(doc['value'], bool):
         raise ValidationException('%s setting must be true or false.' % doc['key'])
 

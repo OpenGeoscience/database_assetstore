@@ -346,6 +346,7 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
                if self.assetstore['database'].get('uri') else params['uri'])
         defaultDatabase = dbs.databaseFromUri(uri)
         response = []
+        createdFolder = createdItem = createdFile = False
         for table in params['tables']:
             if isinstance(table, six.string_types):
                 dbinfo = {'table': table}
@@ -369,6 +370,7 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
                     folder = Folder().createFolder(
                         parent, folderName, parentType=parentType,
                         creator=user)
+                    createdFolder = True
             if parentType == 'file':
                 # for files, we'll create a provisional file below, then
                 # delete the original assetstore entry and modify the
@@ -385,6 +387,7 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
                 if item is None or params.get('replace') is False:
                     item = Item().createItem(
                         name=name, creator=user, folder=folder)
+                createdItem = True
             # Create a file if needed
             file = File().findOne({
                 'name': name,
@@ -397,11 +400,19 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
                     mimeType=dbFormatList.get(preferredFormat(params.get(
                         'format'))),
                     saveFile=False)
+                createdFile = True
             if file.get(DB_INFO_KEY) and not file[DB_INFO_KEY].get('imported'):
                 raise GirderException(
                     'A file for table %s is present but cannot be updated '
                     'because it wasn\'t imported.' % name)
-            file = self._importDataFile(file, parent, parentType, dbinfo, params)
+            try:
+                file = self._importDataFile(file, parent, parentType, dbinfo, params)
+            except GirderException as exc:
+                self._importDataCleanup(
+                    file if createdFile else None,
+                    item if createdItem else None,
+                    folder if createdFolder else None)
+                raise exc
             response.append({'item': item, 'file': file})
         return response
 
@@ -453,6 +464,17 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
         # Now save the new file
         File().save(file)
         return file
+
+    def _importDataCleanup(self, file=None, item=None, folder=None):
+        """
+        Remove the specified items when an import fails.
+        """
+        if file and file.get('_id'):
+            File().remove(file)
+        if item and item.get('_id'):
+            Item().remove(item)
+        if folder and folder.get('_id'):
+            Folder().remove(folder)
 
     def getTableList(self, uri=None, internalTables=False):
         """
