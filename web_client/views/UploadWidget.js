@@ -146,9 +146,16 @@ wrap(UploadWidget, 'render', function (render) {
                 this._debounceGetTableList = _.bind(_.debounce(getTableList, 100), this);
                 this.events['change #g-edit-dbas-dburi'] = this._debounceGetTableList;
                 this.events['input #g-edit-dbas-dburi'] = this._debounceGetTableList;
-                this.events['submit #g-upload-form'] = (e) => {
+                // note that this is not an arrow function, as we want `this`
+                // to be from the event caller's context, not the current
+                // context.
+                this.events['submit #g-upload-form'] = function (e) {
                     e.preventDefault();
-                    importTable.call(this, e);
+                    if (this.$('.g-start-import').length) {
+                        importTable.call(this, e);
+                    } else {
+                        this.startUpload();
+                    }
                 };
                 this.delegateEvents();
             };

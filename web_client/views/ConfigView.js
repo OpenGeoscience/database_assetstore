@@ -11,12 +11,15 @@ import '../stylesheets/configView.styl';
 var ConfigView = View.extend({
     events: {
         'click .g-database-assetstore-remove': function (event) {
+            event.preventDefault();
             this.$('#g-database-assetstore-error-message').text('');
             var index = parseInt($(event.currentTarget).attr('data-index'), 10);
             this.rules.splice(index, 1);
+            this._collectSettings();
             this.render();
         },
         'click #g-database-assetstore-add': function (event) {
+            event.preventDefault();
             this.$('#g-database-assetstore-error-message').text('');
             var pattern = $('#g-database-assetstore-pattern').val();
             var group = $('#g-database-assetstore-group').val();
@@ -30,6 +33,7 @@ var ConfigView = View.extend({
                 groupId: group
             };
             this.rules.push(rule);
+            this._collectSettings();
             this.render();
         },
         'click #g-database-assetstore-save': function (event) {
@@ -39,7 +43,7 @@ var ConfigView = View.extend({
                 value: this.$('#g-database-assetstore-user-databases').is(':checked')
             }, {
                 key: 'database_assetstore.user_databases_groups',
-                value: this.rules.length ? this.rules : ''
+                value: this.rules.length ? JSON.stringify(this.rules) : ''
             }]);
         },
         'click #g-database-assetstore-cancel': function (event) {
@@ -48,8 +52,6 @@ var ConfigView = View.extend({
     },
 
     initialize: function () {
-        this.rules = [];
-
         this.collection = new GroupCollection();
         this.collection.pageLimit = 0;
         this.collection.on('g:changed', function () {
@@ -78,6 +80,9 @@ var ConfigView = View.extend({
     },
 
     render: function () {
+        if (this.rules === undefined) {
+            return;
+        }
         var groups = this.collection.toArray();
 
         var groupsById = {};
@@ -92,6 +97,14 @@ var ConfigView = View.extend({
         }));
         this.breadcrumb.setElement(this.$('.g-config-breadcrumb-container')).render();
         return this;
+    },
+
+    /**
+     * Update the non-rule settings based on current controls so we can
+     * rerender without altering what is currently shown.
+     */
+    _collectSettings: function () {
+        this.settings['database_assetstore.user_databases'] = this.$('#g-database-assetstore-user-databases').is(':checked');
     },
 
     _saveSettings: function (settings) {

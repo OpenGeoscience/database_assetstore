@@ -596,6 +596,8 @@ def getTableList(assetstore, uri=None, internalTables=False):
     """
     uri = uri if uri else assetstore['database']['uri']
     cls = dbs.getDBConnectorClass(uri)
+    if cls is None:
+        return []
     return cls.getTableList(
         uri,
         internalTables=internalTables,
