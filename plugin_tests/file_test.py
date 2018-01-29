@@ -23,6 +23,10 @@ import threading
 import time
 
 from girder import config
+from girder.models.file import File
+from girder.models.folder import Folder
+from girder.models.item import Item
+from girder.models.user import User
 from tests import base
 
 # boiler plate to start and stop the server
@@ -88,18 +92,18 @@ class FileTest(base.TestCase):
         self.assetstore2 = resp.json
 
         from girder.plugins.database_assetstore.assetstore import DB_INFO_KEY
-        self.file1 = self.model('file').createFile(
+        self.file1 = File().createFile(
             name='file1', creator=self.admin, item=self.item1, size=0,
             assetstore=self.assetstore1, saveFile=False)
         self.file1[DB_INFO_KEY] = {'table': 'towns'}
-        self.model('file').save(self.file1)
-        self.file2 = self.model('file').createFile(
+        File().save(self.file1)
+        self.file2 = File().createFile(
             name='file2', creator=self.admin, item=self.item2, size=0,
             assetstore=self.assetstore2, saveFile=False)
         self.file2[DB_INFO_KEY] = {'table': 'towns'}
-        self.model('file').save(self.file2)
+        File().save(self.file2)
 
-        self.file3 = self.model('file').createFile(
+        self.file3 = File().createFile(
             name='file3', creator=self.admin, item=self.item1, size=0,
             assetstore=self.assetstore1, saveFile=True)
 
@@ -125,15 +129,15 @@ class FileTest(base.TestCase):
             'password': 'goodpassword'
         })
         self.admin, self.user = [
-            self.model('user').createUser(**user) for user in users]
-        folders = self.model('folder').childFolders(
+            User().createUser(**user) for user in users]
+        folders = Folder().childFolders(
             self.admin, 'user', user=self.admin)
         for folder in folders:
             if folder['name'] == 'Public':
                 self.publicFolder = folder
-        self.item1 = self.model('item').createItem(
+        self.item1 = Item().createItem(
             'item1', creator=self.admin, folder=self.publicFolder)
-        self.item2 = self.model('item').createItem(
+        self.item2 = Item().createItem(
             'item2', creator=self.admin, folder=self.publicFolder)
 
     def testFileDatabaseEndpoints(self):

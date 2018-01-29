@@ -22,6 +22,9 @@ import json
 import os
 
 from girder import config
+from girder.models.folder import Folder
+from girder.models.item import Item
+from girder.models.user import User
 from tests import base
 
 # boiler plate to start and stop the server
@@ -69,8 +72,8 @@ class DbsSQLiteTest(base.TestCase):
             'lastName': 'Last',
             'password': 'goodpassword'
         }
-        self.admin = self.model('user').createUser(**adminUser)
-        folders = self.model('folder').childFolders(
+        self.admin = User().createUser(**adminUser)
+        folders = Folder().childFolders(
             self.admin, 'user', user=self.admin)
         for folder in folders:
             if folder['name'] == 'Public':
@@ -123,9 +126,9 @@ class DbsSQLiteTest(base.TestCase):
                     db['assetstore']['_id']),
                 method='PUT', user=self.admin, params=params)
             self.assertStatusOk(resp)
-            db['item'] = list(self.model('item').textSearch(
+            db['item'] = list(Item().textSearch(
                 db['table'], user=self.admin, limit=1))[0]
-            db['file'] = list(self.model('item').childFiles(item=db['item']))[0]
+            db['file'] = list(Item().childFiles(item=db['item']))[0]
             db['fileId'] = str(db['file']['_id'])
 
     def testSQLiteDatabaseFields(self):

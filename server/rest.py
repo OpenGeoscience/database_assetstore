@@ -27,6 +27,7 @@ from girder.api.describe import describeRoute, Description
 from girder.api.rest import filtermodel, loadmodel, Resource, RestException, \
     boundHandler
 from girder.models.model_base import AccessType
+from girder.models.file import File
 from girder.utility import assetstore_utilities
 from girder.utility.progress import ProgressContext
 
@@ -46,8 +47,7 @@ from .query import DatabaseQueryException, dbFormatList, queryDatabase, \
 @access.user
 @loadmodel(model='file', map={'id': 'file'}, level=AccessType.READ)
 def getDatabaseLink(self, file, params):
-    if self.model('file').hasAccess(file, self.getCurrentUser(),
-                                    AccessType.WRITE):
+    if File().hasAccess(file, self.getCurrentUser(), AccessType.WRITE):
         return file.get(DB_INFO_KEY)
     else:
         return file.get(DB_INFO_KEY) is not None
@@ -79,7 +79,7 @@ def createDatabaseLink(self, file, params):
         del file[DB_INFO_KEY][key]
     file['updated'] = datetime.datetime.utcnow()
     dbinfo = file[DB_INFO_KEY]
-    return self.model('file').save(file)
+    return File().save(file)
 
 
 @describeRoute(

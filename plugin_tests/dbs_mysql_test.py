@@ -21,6 +21,9 @@ import json
 import os
 
 from girder import config
+from girder.models.folder import Folder
+from girder.models.item import Item
+from girder.models.user import User
 from tests import base
 
 # boiler plate to start and stop the server
@@ -55,8 +58,8 @@ class DbsMySqlTest(base.TestCase):
             'lastName': 'Last',
             'password': 'goodpassword'
         }
-        self.admin = self.model('user').createUser(**adminUser)
-        folders = self.model('folder').childFolders(
+        self.admin = User().createUser(**adminUser)
+        folders = Folder().childFolders(
             self.admin, 'user', user=self.admin)
         for folder in folders:
             if folder['name'] == 'Public':
@@ -80,9 +83,9 @@ class DbsMySqlTest(base.TestCase):
                 self.assetstore1['_id']),
             method='PUT', user=self.admin, params=params)
         self.assertStatusOk(resp)
-        self.dbItem = list(self.model('item').textSearch(
+        self.dbItem = list(Item().textSearch(
             'drerio_gene_vega__gene__main', user=self.admin, limit=1))[0]
-        self.dbFile = list(self.model('item').childFiles(item=self.dbItem))[0]
+        self.dbFile = list(Item().childFiles(item=self.dbItem))[0]
         self.dbFileId = str(self.dbFile['_id'])
 
     def testMySqlDatabaseFields(self):

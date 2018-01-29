@@ -21,7 +21,7 @@ import os
 import re
 import sqlalchemy
 
-from girder.models.model_base import ModelImporter
+from girder.models.file import File
 from girder.utility import path as path_util
 from girder import logger as log
 
@@ -169,8 +169,7 @@ class SqliteSAConnector(SQLAlchemyConnector):
                 uri.split(':///', 1)[1], test=True, filter=False, force=True)
             if resourcepath and resourcepath['model'] == 'file':
                 file = resourcepath['document']
-                fileModel = ModelImporter.model('file')
-                adapter = fileModel.getAssetstoreAdapter(file)
+                adapter = File().getAssetstoreAdapter(file)
                 if hasattr(adapter, 'fullPath'):
                     filepath = adapter.fullPath(file)
                     if os.path.exists(filepath):

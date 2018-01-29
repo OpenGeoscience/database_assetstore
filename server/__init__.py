@@ -21,10 +21,11 @@ import functools
 
 from girder import events
 from girder.api import access
-from girder.api.v1.assetstore import Assetstore
+from girder.api.v1.assetstore import Assetstore as AssetstoreResource
 from girder.constants import AccessType, AssetstoreType, SettingKey
+from girder.models.assetstore import Assetstore
+from girder.models.file import File
 from girder.utility.assetstore_utilities import setAssetstoreAdapter
-from girder.utility.model_importer import ModelImporter
 
 from . import assetstore
 from .rest import DB_INFO_KEY, DatabaseAssetstoreResource, fileResourceRoutes
@@ -35,7 +36,7 @@ def createAssetstore(event):
     params = event.info['params']
 
     if params.get('type') == AssetstoreType.DATABASE:
-        event.addResponse(ModelImporter.model('assetstore').save({
+        event.addResponse(Assetstore().save({
             'type': AssetstoreType.DATABASE,
             'name': params.get('name'),
             'database': {
@@ -82,7 +83,7 @@ def validateSettings(event, plugin_name=None):
     if (key == SettingKey.PLUGINS_ENABLED and plugin_name and
             plugin_name not in val):
         if any(store['type'] == AssetstoreType.DATABASE and store['hasFiles']
-               for store in ModelImporter.model('assetstore').list()):
+               for store in Assetstore().list()):
             val.append(plugin_name)
 
 
@@ -104,7 +105,7 @@ def load(info):
     events.bind('model.setting.validate', 'database_assetstore',
                 functools.partial(validateSettings, plugin_name=plugin_name))
 
-    (Assetstore.createAssetstore.description
+    (AssetstoreResource.createAssetstore.description
         .param('dbtype', 'The database type (for Database type).',
                required=False)
         .param('dburi', 'The database URI (for Database type).',
@@ -114,7 +115,5 @@ def load(info):
 
     fileResourceRoutes(info['apiRoot'].file)
 
-    ModelImporter.model('file').exposeFields(
-        level=AccessType.ADMIN, fields=DB_INFO_KEY)
-    ModelImporter.model('file').exposeFields(
-        level=AccessType.SITE_ADMIN, fields=DB_INFO_KEY)
+    File().exposeFields(level=AccessType.ADMIN, fields=DB_INFO_KEY)
+    File().exposeFields(level=AccessType.SITE_ADMIN, fields=DB_INFO_KEY)
