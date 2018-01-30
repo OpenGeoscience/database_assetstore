@@ -283,7 +283,7 @@ class DatabaseAssetstoreResource(Resource):
         if not len(tables) and not all:
             return results
         tableList = getTableList(assetstore, uri=uri)
-        defaultDatabase = dbs.databaseFromUri(uri if uri else assetstore['database']['uri'])
+        defaultDatabase = dbs.databaseFromUri(uri or assetstore['database']['uri'])
         for database in tableList:
             for tableEntry in database['tables']:
                 use = all

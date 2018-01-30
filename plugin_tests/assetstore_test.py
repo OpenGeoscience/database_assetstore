@@ -777,8 +777,6 @@ class AssetstoreTest(base.TestCase):
         from girder.plugins.database_assetstore import assetstore
         from girder.plugins.database_assetstore.base import PluginSettings
 
-        with six.assertRaisesRegex(self, Exception, 'must be true or false'):
-            Setting().set(PluginSettings.USER_DATABASES, 'notaboolean')
         Setting().set(PluginSettings.USER_DATABASES, 'false')
         self.assertIsNotNone(assetstore.checkUserImport(
             self.admin, 'postgresql://postgres@127.0.0.1/sampledb'))

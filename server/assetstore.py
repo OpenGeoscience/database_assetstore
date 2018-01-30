@@ -664,7 +664,7 @@ def checkUserImport(user, uri, validateUri=True):
     # Admins can always do this if the base setting allows it
     if user.get('admin'):
         return
-    if groups and len(groups):
+    if groups:
         error = 'group'
         for groupRule in groups:
             if groupRule['groupId']:

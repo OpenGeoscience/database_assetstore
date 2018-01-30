@@ -5,7 +5,7 @@ from girder import logger as log
 from girder.constants import AssetstoreType, SettingKey
 from girder.exceptions import ValidationException
 from girder.models.assetstore import Assetstore
-from girder.utility import setting_utilities
+from girder.utility import setting_utilities, toBool
 
 
 DB_INFO_KEY = 'databaseMetadata'
@@ -42,12 +42,7 @@ class PluginSettings(object):
 
 @setting_utilities.validator(PluginSettings.USER_DATABASES)
 def _validateBoolean(doc):
-    if str(doc['value']).lower() in ('true', 'yes', '1'):
-        doc['value'] = True
-    if str(doc['value']).lower() in ('false', 'no', '0'):
-        doc['value'] = False
-    if not isinstance(doc['value'], bool):
-        raise ValidationException('%s setting must be true or false.' % doc['key'])
+    doc['value'] = toBool(doc['value'])
 
 
 @setting_utilities.validator(PluginSettings.USER_DATABASES_GROUPS)
@@ -65,7 +60,7 @@ def _createUserAssetstore():
     that if it is deleted and the plugin starts again, existing db assets will
     still work.
     """
-    if not Assetstore().load(DB_ASSETSTORE_ID):
+    if not Assetstore().load(DB_ASSETSTORE_ObjectId):
         Assetstore().save({
             '_id': DB_ASSETSTORE_ObjectId,
             'type': AssetstoreType.DATABASE,
@@ -80,7 +75,7 @@ def _removeUserAssetstore():
     """
     Remove the user assetstore if it exists.
     """
-    store = Assetstore().load(DB_ASSETSTORE_ID)
+    store = Assetstore().load(DB_ASSETSTORE_ObjectId)
     if store:
         Assetstore().remove(store)
 
