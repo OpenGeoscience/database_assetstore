@@ -23,13 +23,11 @@ wrap(EditAssetstoreWidget, 'render', function (render) {
 EditAssetstoreWidget.prototype.fieldsMap.database = {
     get: function () {
         return {
-            dbtype: this.$('#g-edit-dbas-dbtype').val(),
             dburi: this.$('#g-edit-dbas-dburi').val()
         };
     },
     set: function () {
         var dbInfo = this.model.get('database');
-        this.$('#g-edit-dbas-dbtype').val(dbInfo.dbtype);
         this.$('#g-edit-dbas-dburi').val(dbInfo.uri);
     }
 };

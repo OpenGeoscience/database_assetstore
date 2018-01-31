@@ -1,0 +1,25 @@
+users:
+  - login: 'admin'
+    email: 'admin@email.com'
+    firstName: 'Admin'
+    lastName: 'Admin'
+    password: 'adminpassword'
+    folders:
+      - name: 'Public'
+        public: true
+        items:
+          - name: 'Empty'
+  - login: 'user1'
+    email: 'user1@email.com'
+    firstName: 'First'
+    lastName: 'User'
+    password: 'userpassword'
+    folders:
+      - name: 'Public'
+        public: true
+        items:
+          - name: 'Empty'
+          - name: 'Sqlite'
+            files:
+              - name: 'Sqlite'
+                path: 'small.db'

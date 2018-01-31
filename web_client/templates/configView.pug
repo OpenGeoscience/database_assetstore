@@ -1,0 +1,52 @@
+.g-config-breadcrumb-container
+
+p.g-database-assetstore-description.
+  The Database Assetstore plugin allows databases to be accessed as Girder
+  files.  Specific databases can be added as an assetstore and then tables,
+  views, or collections can be imported as assets with specific filters,
+  formats, and sorting.  For database-aware services, these file-like assets
+  can be used to make queries into the database.
+
+form#g-database-assetstore-config-form(role='form')
+  .checkbox
+    label.control-label(for='g-database-assetstore-user-databases')
+      input#g-database-assetstore-user-databases(type='checkbox',
+          checked=(settings['database_assetstore.user_databases'] ? 'checked' : null))
+      span Allow users to create database assets.
+
+  table.table.table-hover
+    thead
+      tr
+        th Users in group
+        th Can add databases with a URI matching
+        th
+    tbody
+      if !rules.length
+        tr
+          td.g-database-assetstore-empty(colspan=3) No rules defined (this is the same as (all users) matching ".*").
+      each rule, index in rules
+        - var group = rule.groupId ? groupsById[rule.groupId] : null
+        tr
+          td= rule.groupId ? (group ? group.get('name') : '(group no longer exists)') : '(all users)'
+          td= rule.pattern
+          td
+            button.g-database-assetstore-remove.btn.btn-xs.btn-danger(title="Remove rule", data-index=index)
+              i.icon-cancel
+    tfoot
+      tr
+        td
+          select#g-database-assetstore-group.form-control.input-sm
+            option(value='') (all users)
+            each group in groups
+              option(value=group.get('_id'))= group.get('name')
+        td
+          input#g-database-assetstore-pattern.form-control.input-sm(placeholder="Enter URI pattern")
+        td
+          button#g-database-assetstore-add.btn.btn-xs.btn-primary(title="Add rule")
+            i.icon-plus
+
+p#g-database-assetstore-error-message.g-validation-failed-message
+
+.g-database-assetstore-buttons
+  button#g-database-assetstore-save.btn.btn-sm.btn-primary Save
+  button#g-database-assetstore-cancel.btn.btn-sm.btn-default Cancel

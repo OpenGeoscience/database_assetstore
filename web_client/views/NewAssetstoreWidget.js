@@ -18,7 +18,6 @@ NewAssetstoreWidget.prototype.events['submit #g-new-dbas-form'] = function (e) {
     this.createAssetstore(e, this.$('#g-new-dbas-error'), {
         type: AssetstoreType.DATABASE,
         name: this.$('#g-new-dbas-name').val(),
-        dbtype: this.$('#g-new-dbas-dbtype').val(),
-        dburi: this.$('#g-new-dbas-dburi').val()
+        dburi: this.$('#g-edit-dbas-dburi').val()
     });
 };

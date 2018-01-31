@@ -1,3 +1,5 @@
+include dbAssetstoreMixins
+
 .panel.panel-default
   .panel-heading(
       data-toggle="collapse",
@@ -19,25 +21,7 @@
           input#g-new-dbas-name.input-sm.form-control(
               type="text",
               placeholder="Name")
-        .form-group
-          label.control-label(for="g-new-dbas-dbtype") Database Type
-          //- input#g-new-dbas-dbtype.input-sm.form-control(
-            type="text" placeholder="Database Type")
-          select#g-new-dbas-dbtype.input-sm.form-control
-            option(value='', disabled=true, selected=true) Select Database Type
-            option(value='mongo') MongoDB
-            option(value='sqlalchemy_mysql') MySQL
-            option(value='sqlalchemy_postgres') PostgreSQL
-            option(value='sqlalchemy_sqlite') SQLite
-            option(value='sqlalchemy') Generic SQL
-        .form-group(title='This is of the form [(dialect)://][(user name)[:(password)]@](server)[:(port)]/(database)[?(options)].  Dialect is one of mongodb, postgresql, sqlite, mysql, oracle, or mssql.  For example, postgresql://localhost/sampledb')
-          label.control-label(for="g-new-dbas-dburi") Database URI
-          input#g-new-dbas-dburi.input-sm.form-control(
-            type="text", placeholder="URI -- (dialect)://(user):(password)@(server):(port)/(database)?(options)")
-        //- .form-group
-          label.control-label(for="g-new-dbas-table") Table or Collection
-          input#g-new-dbas-table.input-sm.form-control(
-            type="text", placeholder="Table")
+        +g-dbas-uri
         p#g-new-dbas-error.g-validation-failed-message
         input.g-new-assetstore-submit.btn.btn-sm.btn-primary(
           type="submit", value="Create")

@@ -51,7 +51,9 @@ class MongoConnector(base.DatabaseConnector):
     def __init__(self, *args, **kwargs):
         super(MongoConnector, self).__init__(*args, **kwargs)
         self.collection = kwargs.get('collection', kwargs.get('table'))
-        self.databaseUri = kwargs.get('uri')
+        uri = kwargs.get('uri')
+        dialect, _ = base.getDBConnectorClassFromDialect(uri)
+        self.databaseUri = '%s://%s' % (dialect, uri.split('://', 1)[1])
         self.databaseName = kwargs.get(
             'database', base.databaseFromUri(self.databaseUri))
 

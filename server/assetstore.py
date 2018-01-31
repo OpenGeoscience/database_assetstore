@@ -19,22 +19,24 @@
 
 import cherrypy
 import json
+import re
 import six
+from bson.objectid import ObjectId
 from six.moves import urllib
 
 from girder.constants import AssetstoreType
-from girder.models.model_base import GirderException, ValidationException
+from girder.exceptions import GirderException, ValidationException
 from girder.models.assetstore import Assetstore
 from girder.models.file import File
 from girder.models.folder import Folder
 from girder.models.item import Item
+from girder.models.setting import Setting
 from girder.utility.abstract_assetstore_adapter import AbstractAssetstoreAdapter, FileHandle
+from girder.utility import assetstore_utilities
 
 from . import dbs
+from .base import PluginSettings, DB_ASSETSTORE_USER_TYPE, DB_INFO_KEY
 from .query import dbFormatList, queryDatabase, preferredFormat
-
-
-DB_INFO_KEY = 'databaseMetadata'
 
 
 class DatabaseAssetstoreFile(dict):
@@ -86,24 +88,23 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
         # Ensure that the assetstore is marked read-only
         doc['readOnly'] = True
         info = doc.get('database', {})
+        dbtype = info.get('dbtype')
+        if dbtype == DB_ASSETSTORE_USER_TYPE:
+            return
         uri = info.get('uri')
         if not uri:
             raise ValidationException('Missing uri field.')
-        dbtype = info.get('dbtype')
-        dialect = uri.split('://', 1)[0] if '://' in uri else dbtype
-        validatedDialect, validatedDbtype = dbs.getDBConnectorClassFromDialect(
-            dialect, dbtype)
+        validatedDialect, validatedDbtype = dbs.getDBConnectorClassFromDialect(uri)
         if validatedDbtype is None:
             if dbtype:
                 raise ValidationException(
                     'URI is not valid for dbtype %s.' % dbtype)
             raise ValidationException(
                 'Either specify dbtype or include a dialect in the URI.')
-        info['uri'] = uri.split('://', 1)[-1]
-        if validatedDialect:
+        if '://' not in info['uri'] and validatedDialect:
             info['uri'] = '%s://%s' % (validatedDialect, info['uri'])
         info['dbtype'] = validatedDbtype
-        connClass = dbs.getDBConnectorClass(info['dbtype'])
+        connClass = dbs.getDBConnectorClass(info['uri'])
         info['uri'] = connClass.canonicalDatabaseUri(info['uri'])
         if connClass.databaseNameRequired and not dbs.databaseFromUri(info['uri']):
             raise ValidationException(
@@ -320,7 +321,7 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
         error is given.
 
         :param parent: The parent object to import into.  Must be a folder,
-            user, or collection.
+            user, collection, item, or file.
         :param parentType: The model type of the parent object.
         :param params: Additional parameters required for the import process:
             tables: a list of tables to add.  If there is already an item with
@@ -330,6 +331,9 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
             filters: default filters parameter.  Used in plain downloads.
             group: default group parameter.  Used in plain downloads.
             format: default format parameter.  Used in plain downloads.
+            replace: if False, don't replace an existing file/item with the
+                name, but always create new entries.  A parentType of file
+                will always replace the existing data of a file
         :type params: dict
         :param progress: Object on which to record progress if possible.
         :type progress: :py:class:`girder.utility.progress.ProgressContext`
@@ -338,19 +342,24 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
         :return: a list of objects, each of which has an item and file entry
             with the items and files that were imported.
         """
-        defaultDatabase = dbs.databaseFromUri(self.assetstore['database']['uri'])
+        uri = (self.assetstore['database'].get('uri')
+               if self.assetstore['database'].get('uri') else params['uri'])
+        defaultDatabase = dbs.databaseFromUri(uri)
         response = []
+        createdFolder = createdItem = createdFile = False
         for table in params['tables']:
             if isinstance(table, six.string_types):
                 dbinfo = {'table': table}
             else:
                 dbinfo = table.copy()
+            if not self.assetstore['database'].get('uri'):
+                dbinfo['uri'] = uri
             name = dbinfo.pop('name', dbinfo['table'])
             progress.update(message='Importing %s' % name)
             # Find or create a folder if needed
             if 'database' not in dbinfo and parentType == 'folder':
                 folder = parent
-            else:
+            elif parentType not in ('file', 'item'):
                 folderName = dbinfo.get('database', defaultDatabase)
                 folder = Folder().findOne({
                     'parentId': parent['_id'],
@@ -361,69 +370,122 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
                     folder = Folder().createFolder(
                         parent, folderName, parentType=parentType,
                         creator=user)
-            # Create an item if needed
-            item = Item().findOne({
-                'folderId': folder['_id'],
-                'name': name
-            })
-            if item is None:
-                item = Item().createItem(
-                    name=name, creator=user, folder=folder)
+                    createdFolder = True
+            if parentType == 'file':
+                # for files, we'll create a provisional file below, then
+                # delete the original assetstore entry and modify the
+                # existing file entry with the updated values before saving.
+                item = Item().load(parent['itemId'], force=True)
+            elif parentType == 'item':
+                item = parent
+            else:
+                # Create an item if needed
+                item = Item().findOne({
+                    'folderId': folder['_id'],
+                    'name': name
+                })
+                if item is None or params.get('replace') is False:
+                    item = Item().createItem(
+                        name=name, creator=user, folder=folder)
+                createdItem = True
             # Create a file if needed
             file = File().findOne({
                 'name': name,
                 'itemId': item['_id']
             })
-            if file is None:
+            if file is None or params.get('replace') is False or parentType == 'file':
                 file = File().createFile(
                     creator=user, item=item, name=name, size=0,
                     assetstore=self.assetstore,
                     mimeType=dbFormatList.get(preferredFormat(params.get(
                         'format'))),
                     saveFile=False)
+                createdFile = True
             if file.get(DB_INFO_KEY) and not file[DB_INFO_KEY].get('imported'):
                 raise GirderException(
                     'A file for table %s is present but cannot be updated '
                     'because it wasn\'t imported.' % name)
-            # Validate the limit parameter
             try:
-                if params.get('limit') not in (None, ''):
-                    params['limit'] = int(params['limit'])
-            except ValueError:
-                raise GirderException(
-                    'limit must be empty or an integer')
-            # Set or replace the database parameters for the file
-            dbinfo['imported'] = True
-            for key in ('sort', 'fields', 'filters', 'group', 'format',
-                        'limit'):
-                dbinfo[key] = params.get(key)
-            file[DB_INFO_KEY] = dbinfo
-            # Validate that we can perform queries by trying to download 1
-            # record from the file.
-            #   This intentionally encodes extraParameters as JSON.  It could
-            # pass it as a python dictionary or encode it as a url query string,
-            # but another Girder plugin has expressed a preference for JSON as
-            # the de facto standard for extraParameters.
-            downloadFunc = self.downloadFile(
-                file.copy(), headers=False, extraParameters=json.dumps({
-                    'limit': 1}))
-            # Test the download without keeping it
-            for chunk in downloadFunc():
-                pass
-            # Now save the new file
-            File().save(file)
+                file = self._importDataFile(file, parent, parentType, dbinfo, params)
+            except GirderException as exc:
+                self._importDataCleanup(
+                    file if createdFile else None,
+                    item if createdItem else None,
+                    folder if createdFolder else None)
+                raise exc
             response.append({'item': item, 'file': file})
         return response
 
-    def getTableList(self, internalTables=False):
+    def _importDataFile(self, file, parent, parentType, dbinfo, params):
+        """
+        Validate and finish importing a file.
+
+        :param file: The file to store information in.  If the parentType is
+            file, the parent is updated instead.
+        :param parent: The parent object to import into.
+        :param parentType: The model type of the parent object.
+        :param dbinfo: a dictionary of database information for the new file.
+        :param params: Additional parameters required for the import process.
+            See importData.
+        :return: the file that was saved.
+        """
+        # Validate the limit parameter
+        try:
+            if params.get('limit') not in (None, ''):
+                params['limit'] = int(params['limit'])
+        except ValueError:
+            raise GirderException(
+                'limit must be empty or an integer')
+        # Set or replace the database parameters for the file
+        dbinfo['imported'] = True
+        for key in ('sort', 'fields', 'filters', 'group', 'format',
+                    'limit'):
+            dbinfo[key] = params.get(key)
+        file[DB_INFO_KEY] = dbinfo
+        # Validate that we can perform queries by trying to download 1 record
+        # from the file.
+        #   This intentionally encodes extraParameters as JSON.  It could pass
+        # it as a python dictionary or encode it as a url query string, but
+        # another Girder plugin has expressed a preference for JSON as the de
+        # facto standard for extraParameters.
+        downloadFunc = self.downloadFile(
+            file.copy(), headers=False, extraParameters=json.dumps({
+                'limit': 1}))
+        # Test the download without keeping it
+        for chunk in downloadFunc():
+            pass
+        if parentType == 'file':
+            assetstore_utilities.getAssetstoreAdapter(
+                Assetstore().load(parent['assetstoreId'])).deleteFile(parent)
+            for key in ('creatorId', 'created', 'assetstoreId', 'size',
+                        DB_INFO_KEY):
+                parent[key] = file[key]
+            file = parent
+        # Now save the new file
+        File().save(file)
+        return file
+
+    def _importDataCleanup(self, file=None, item=None, folder=None):
+        """
+        Remove the specified items when an import fails.
+        """
+        if file and file.get('_id'):
+            File().remove(file)
+        if item and item.get('_id'):
+            Item().remove(item)
+        if folder and folder.get('_id'):
+            Folder().remove(folder)
+
+    def getTableList(self, uri=None, internalTables=False):
         """
         Return the list of known tables or collections.
 
         :param internalTables: True to include database internal tables (such
             as information_schema tables).
+        :param uri: the uri to use for a user-database.
         :returns: a list of known tables.
         """
-        return getTableList(self.assetstore, internalTables)
+        return getTableList(self.assetstore, uri=None, internalTables=internalTables)
 
     def getDBConnectorForTable(self, table=None, overrideDbinfo={}):
         """
@@ -436,9 +498,9 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
         :param overrideDbinfo: extra information that overrides the adapter's
             default information.
         """
+        uri = self.assetstore['database']['uri']
         dbinfo = {
-            'type': self.assetstore['database']['dbtype'],
-            'uri': self.assetstore['database']['uri'],
+            'uri': uri,
         }
         schema = None
         if table and '.' in table:
@@ -448,7 +510,7 @@ class DatabaseAssetstoreAdapter(AbstractAssetstoreAdapter):
         if schema:
             dbinfo['schema'] = schema
         dbinfo.update(overrideDbinfo)
-        connClass = dbs.getDBConnectorClass(dbinfo.get('type'))
+        connClass = dbs.getDBConnectorClass(dbinfo.get('uri'))
         conn = connClass(**dbinfo)
         return conn
 
@@ -484,9 +546,12 @@ def getDbInfoForFile(file, assetstore=None):
         assetstore = Assetstore().load(file['assetstoreId'])
     if assetstore.get('type') != AssetstoreType.DATABASE:
         return None
+    if assetstore['database'].get('dbtype') == DB_ASSETSTORE_USER_TYPE:
+        uri = file[DB_INFO_KEY]['uri']
+    else:
+        uri = assetstore['database']['uri']
     dbinfo = {
-        'type': assetstore['database']['dbtype'],
-        'uri': assetstore['database']['uri'],
+        'uri': uri,
         'table': file[DB_INFO_KEY]['table'],
         'collection': file[DB_INFO_KEY]['table']
 
@@ -519,18 +584,22 @@ def getQueryParamsForFile(file, setBlanks=False):
     return params
 
 
-def getTableList(assetstore, internalTables=False):
+def getTableList(assetstore, uri=None, internalTables=False):
     """
     Given an assetstore, return the list of known tables or collections.
 
     :param assetstore: the assetstore document.
+    :param uri: the uri to use for a user-database.
     :param internalTables: True to include database internal tables (such as
         information_schema tables).
     :returns: a list of known tables.
     """
-    cls = dbs.getDBConnectorClass(assetstore['database']['dbtype'])
+    uri = uri if uri else assetstore['database']['uri']
+    cls = dbs.getDBConnectorClass(uri)
+    if cls is None:
+        return []
     return cls.getTableList(
-        assetstore['database']['uri'],
+        uri,
         internalTables=internalTables,
         dbparams=assetstore['database'].get('dbparams', {}))
 
@@ -563,13 +632,56 @@ def validateFile(file):
         return None
     assetstore = Assetstore().load(file['assetstoreId'])
     if assetstore.get('type') != AssetstoreType.DATABASE:
+        # This can happen if the file was a database_assetstore file and then
+        # is replaced, for instance, by uploading a new file.
+        if DB_INFO_KEY in file:
+            del file[DB_INFO_KEY]
         return None
     if not file[DB_INFO_KEY].get('table'):
         raise ValidationException(
             'File database information entry must have a non-blank table '
             'value.')
-    if (not dbs.databaseFromUri(assetstore['database']['uri']) and
-            not file[DB_INFO_KEY].get('database')):
+    if not assetstore['database'].get('uri') and not file[DB_INFO_KEY].get('uri'):
         raise ValidationException(
-            'File database information must have a non-blank database value '
-            'on an assetstore that doesn\'t specify a single database.')
+            'File database information must have a non-blank uri value on an '
+            'assetstore that doesn\'t specify a single database.')
+
+
+def checkUserImport(user, uri, validateUri=True):
+    """
+    Check if the specified user is allowed to import the specified URI.
+
+    :param user: the user to validate.
+    :param uri: the database connection string to validate.
+    :param validateUri: if False, only report if the user could import any
+        database (the uri parameter is always considered matching).
+    :returns: None if the user may import the specified URI, otherwise an error
+        string.
+    """
+    if not Setting().get(PluginSettings.USER_DATABASES):
+        return 'User-level database imports are not allowed'
+    groups = Setting().get(PluginSettings.USER_DATABASES_GROUPS)
+    # Admins can always do this if the base setting allows it
+    if user.get('admin'):
+        return
+    if groups:
+        error = 'group'
+        for groupRule in groups:
+            if groupRule['groupId']:
+                groupId = groupRule['groupId']
+                if not isinstance(groupId, ObjectId):
+                    groupId = ObjectId(groupId)
+                if groupId not in user.get('groups', []):
+                    # The user is not part of this group
+                    continue
+            if validateUri and (not uri or not re.search(groupRule['pattern'], uri)):
+                error = 'uri'
+            else:
+                # The user is part of this group and the pattern matches
+                error = None
+                break
+        if error == 'group':
+            return 'This user cannot add a database.'
+        if error:
+            return 'This user cannot add a database with this URI.'
+    # allow the import

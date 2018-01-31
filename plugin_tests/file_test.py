@@ -84,7 +84,8 @@ class FileTest(base.TestCase):
         dbParams2 = dbParams.copy()
         dbParams2['name'] = 'Assetstore 2'
         dbParams2['dbtype'] = 'sqlalchemy'
-        # dbParams2['dburi'] = 'sql://127.0.0.1/sampledb'
+        # Use the generic sql class, rather than the dialect-specific class.
+        dbParams2['dburi'] = 'sqlalchemy:' + dbParams2['dburi']
         dbParams2.update(args)
         resp = self.request(method='POST', path='/assetstore', user=self.admin,
                             params=dbParams2)
@@ -200,10 +201,10 @@ class FileTest(base.TestCase):
 
     def testFileDatabaseBadConnectors(self):
         from girder.plugins.database_assetstore import dbs
-        self.assertIsNone(dbs.getDBConnector('test1', {'type': 'base'}))
+        self.assertIsNone(dbs.getDBConnector('test1', {'uri': 'base'}))
         dbs.base.registerConnectorClass('base', dbs.base.DatabaseConnector, {})
         with self.assertRaises(dbs.DatabaseConnectorException):
-            dbs.getDBConnector('test1', {'type': 'base'})
+            dbs.getDBConnector('test1', {'uri': 'base'})
         del dbs.base._connectorClasses['base']
 
         class ValidatingConnector(dbs.base.DatabaseConnector):

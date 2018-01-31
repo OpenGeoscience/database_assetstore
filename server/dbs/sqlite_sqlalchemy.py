@@ -157,6 +157,7 @@ class SqliteSAConnector(SQLAlchemyConnector):
         :param uri: the uri to adjust.
         :returns: the adjusted uri
         """
+        uri = super(SqliteSAConnector, cls).adjustDBUri(uri, *args, **kwargs)
         if '://' in uri:
             uri = uri.split('://', 1)[0] + ':////' + uri.split('://', 1)[1].lstrip('/')
         uri = super(SqliteSAConnector, cls).adjustDBUri(uri, *args, **kwargs)

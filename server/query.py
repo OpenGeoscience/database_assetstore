@@ -8,7 +8,7 @@ import six
 
 from six.moves import range
 
-from girder.models.model_base import GirderException
+from girder.exceptions import GirderException
 
 from . import dbs
 

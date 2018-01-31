@@ -210,12 +210,14 @@ class SQLAlchemyConnector(base.DatabaseConnector):
         :param uri: the uri to adjust.
         :returns: the adjusted uri
         """
-        # The below code is disabled until a test can be made where it works.
-        # sqlalchemy doesn't seem to permit this without some additional
-        # module.
-        #   If the prefix is sql://, use the default generic-sql dialect:
-        # if uri.startswith('sql://'):
-        #     uri = uri.split('sql://', 1)[1]
+        # If we specifically ask for a URI starting with sqlalchemy: (e.g.,
+        # sqlalchemy:postgresql://127.0.0.1/database), use this generic class
+        # rather than our specific sqlalchemy class.
+        if uri.startswith('sqlalchemy:'):
+            uri = uri.split('sqlalchemy:', 1)[1]
+        else:
+            dialect, _ = base.getDBConnectorClassFromDialect(uri)
+            uri = '%s://%s' % (dialect, uri.split('://', 1)[1])
         return uri
 
     def connect(self, client=None):

@@ -19,7 +19,7 @@
 
 import time
 
-from girder.models.model_base import GirderException
+from girder.exceptions import GirderException
 
 
 FilterOperators = {
@@ -80,7 +80,7 @@ _connectorCache = {}
 _connectorCacheMaxSize = 10  # Probably should make this configurable
 
 
-def getDBConnectorClass(name):
+def getDBConnectorClass(uri):
     """
     Get a DB connector class.  This checks if such a class exists and either
     returns a reference to the class or None.
@@ -88,7 +88,10 @@ def getDBConnectorClass(name):
     :param name: name of the connector class, as registered by __init__.
     :return: the connector class or None
     """
-    return _connectorClasses.get(name, {}).get('class')
+    dialect, clsname = getDBConnectorClassFromDialect(uri)
+    if clsname is None:
+        return None
+    return _connectorClasses.get(clsname, {}).get('class')
 
 
 def getDBConnectorClassFromDialect(dialect, name=None):
@@ -96,12 +99,16 @@ def getDBConnectorClassFromDialect(dialect, name=None):
     Get a DB connector class and preferred dialect.  This checks if such a
     class exists and either returns a class and dialect name or None.
 
-    :param dialect: name of a dialect.
+    :param dialect: name of a dialect or a uri.
     :param name: name of the DB connector.  If None, all DB connectors are
                  checked.
     :return: the preferred dialect name or None.
     :return: the connector class name or None.
     """
+    if dialect and '://' in dialect:
+        dialect = dialect.split('://', 1)[0]
+        if ':' in dialect and dialect.split(':', 1)[0] in _connectorClasses:
+            return dialect, dialect.split(':', 1)[0]
     # Sort our classes by priority (lower is higher priority) and find the
     # first class that has the specified dialect.
     classes = [record[-1] for record in sorted([
@@ -156,7 +163,7 @@ def getDBConnector(id, dbinfo):
         id = str(id)
     conn = _connectorCache.get(id, None)
     if conn is None:
-        connClass = getDBConnectorClass(dbinfo.get('type'))
+        connClass = getDBConnectorClass(dbinfo.get('uri'))
         if connClass is None:
             return None
         conn = connClass(**dbinfo)

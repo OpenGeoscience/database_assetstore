@@ -22,17 +22,24 @@ import functools
 from girder import events
 from girder.api import access
 from girder.api.v1.assetstore import Assetstore as AssetstoreResource
-from girder.constants import AccessType, AssetstoreType, SettingKey
+from girder.constants import AccessType, AssetstoreType
 from girder.models.assetstore import Assetstore
 from girder.models.file import File
 from girder.utility.assetstore_utilities import setAssetstoreAdapter
 
 from . import assetstore
-from .rest import DB_INFO_KEY, DatabaseAssetstoreResource, fileResourceRoutes
+from . import base
+from .rest import DatabaseAssetstoreResource, fileResourceRoutes
 
 
 @access.admin
 def createAssetstore(event):
+    """
+    When an assetstore is created, make sure it has a well-formed database
+    information record.
+
+    :param event: Girder rest.post.assetstore.before event.
+    """
     params = event.info['params']
 
     if params.get('type') == AssetstoreType.DATABASE:
@@ -48,14 +55,26 @@ def createAssetstore(event):
 
 
 def updateAssetstore(event):
-    params = event.info['params']
-    assetstore = event.info['assetstore']
+    """
+    When an assetstore is updated, make sure the result has a well-formed set
+    of database information.
 
-    if assetstore['type'] == AssetstoreType.DATABASE:
-        assetstore['database'] = {
-            'dbtype': params.get('dbtype', assetstore['database']['dbtype']),
-            'uri': params.get('dburi', assetstore['database']['uri'])
-        }
+    :param event: Girder assetstore.update event.
+    """
+    params = event.info['params']
+    store = event.info['assetstore']
+
+    if store['type'] == AssetstoreType.DATABASE:
+        dbtype = params.get('dbtype', store['database']['dbtype'])
+        if dbtype == assetstore.DB_ASSETSTORE_USER_TYPE:
+            store['database'] = {
+                'dbtype': dbtype
+            }
+        else:
+            store['database'] = {
+                'dbtype': dbtype,
+                'uri': params.get('dburi', store['database']['uri'])
+            }
 
 
 def validateFile(event):
@@ -66,25 +85,6 @@ def validateFile(event):
     :param event: the validation event.  info is the file document.
     """
     assetstore.validateFile(event.info)
-
-
-def validateSettings(event, plugin_name=None):
-    """
-    Validate plugin-specific settings and prevent disabling this plugin if
-    there are any files in database assetstores.
-
-    :param plugin_name: the name of our plugin.
-    :param event: the validation event
-    """
-    key, val = event.info['key'], event.info['value']
-
-    # If we are validating the list of enabled plugins, and there are any
-    # database assetstores with files, do not allow the plugin to be disabled.
-    if (key == SettingKey.PLUGINS_ENABLED and plugin_name and
-            plugin_name not in val):
-        if any(store['type'] == AssetstoreType.DATABASE and store['hasFiles']
-               for store in Assetstore().list()):
-            val.append(plugin_name)
 
 
 def load(info):
@@ -103,7 +103,7 @@ def load(info):
                 createAssetstore)
     events.bind('model.file.validate', 'database_assetstore', validateFile)
     events.bind('model.setting.validate', 'database_assetstore',
-                functools.partial(validateSettings, plugin_name=plugin_name))
+                functools.partial(base.validateSettings, plugin_name=plugin_name))
 
     (AssetstoreResource.createAssetstore.description
         .param('dbtype', 'The database type (for Database type).',
@@ -115,5 +115,8 @@ def load(info):
 
     fileResourceRoutes(info['apiRoot'].file)
 
-    File().exposeFields(level=AccessType.ADMIN, fields=DB_INFO_KEY)
-    File().exposeFields(level=AccessType.SITE_ADMIN, fields=DB_INFO_KEY)
+    File().exposeFields(level=AccessType.ADMIN, fields=base.DB_INFO_KEY)
+    File().exposeFields(level=AccessType.SITE_ADMIN, fields=base.DB_INFO_KEY)
+
+    # Make sure the user assetstore exists.
+    base._createUserAssetstore()
