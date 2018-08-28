@@ -138,3 +138,9 @@ SQLite on Files Stored in Girder
 SQLite works with files rather than a database server.  To specify a file that is in Girder's local file system, use a Database URI of ``sqlite://<absolute path to file>`` (e.g., ``sqlite:///home/pliny/natural_history/zoology.db``).
 
 SQLLite can also work with files stored in a Girder filesystem assetstore.  Instead of a local file path, use a Girder resource path.  This will be of the form ``sqlite:///<'user' or 'collection'>/<user or collection name>/<folder name>/[<subfolder name>/ ...]<item name>/<file name>``.  For example ``sqlite:///user/pliny/Public/Natural History/zoology.db/zoology.db``.
+
+
+Installation
+------------
+
+To install this plugin in girder, use a command like ``girder-install plugin . --symlink --dev`` from within the root repository directory.  This won't install extras_require packages.  To add those, use something like `pip install -e .[mysql,postgres,sqlite]` with just the desired list of supported databases, or `pip install -e .[all]` for all extras.
