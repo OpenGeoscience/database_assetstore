@@ -23,7 +23,7 @@ services:
     - postgresql
 
 before_install:
-    - nvm install v6
+    - nvm install v8
     - npm install -g npm
     - node --version
     - npm --version
@@ -36,8 +36,6 @@ before_install:
     - rm -fr $girder_path
     - GIRDER_VERSION=master
     - git clone --branch $GIRDER_VERSION https://github.com/girder/girder.git $girder_path
-    - ln -sf $main_path $girder_path/plugins/
-    - ls -l $girder_path/plugins
 
     - export MONGO_VERSION=3.2.18
     - export PY_COVG="ON"
@@ -58,7 +56,8 @@ before_install:
 install:
     - cd $girder_path
     - pip install -U -r requirements-dev.txt -e .
-    - pip install -r $main_path/requirements.txt -e .
+    - girder-install plugin --symlink --dev $main_path
+    - pip install -e $main_path[all]
     - girder-install web --plugins=database_assetstore --dev
 
 before_script:
