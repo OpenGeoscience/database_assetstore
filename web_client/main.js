@@ -7,6 +7,7 @@ import './routes';
 import './constants';
 import './views/AssetstoresView';
 import './views/EditAssetstoreWidget';
+import './views/EditFileWidget';
 import './views/NewAssetstoreWidget';
 import './views/UploadWidget';
 

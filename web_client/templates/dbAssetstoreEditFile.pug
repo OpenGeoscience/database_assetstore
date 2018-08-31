@@ -1,0 +1,6 @@
+include dbAssetstoreMixins
+
+if (assetstore.database || {}).dbtype !== 'USER'
+  +g-dbas-uri
+- multiple = false
++g-dbas-import-tables
