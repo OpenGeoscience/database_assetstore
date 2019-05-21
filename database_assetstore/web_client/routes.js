@@ -1,5 +1,5 @@
-import router from 'girder/router';
-import events from 'girder/events';
+import router from '@girder/core/router';
+import events from '@girder/core/events';
 
 import AssetstoreModel from './models/AssetstoreModel';
 import AssetstoreImportView from './views/AssetstoreImportView';

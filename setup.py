@@ -61,4 +61,9 @@ setup(
         ('database_assetstore/girder', ['plugin.json']),
     ],
     test_suite='plugin_tests',
+    entry_points={
+        'girder.plugin': [
+            'database-assetstore = database_assetstore:DatabaseAssetstorePlugin'
+        ]
+    }
 )

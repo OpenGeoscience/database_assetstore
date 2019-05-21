@@ -1,5 +1,5 @@
 {
-  "name": "database_assetstore",
+  "name": "@girder/database_assetstore",
   "version": "0.1.0",
   "description": "A Girder plugin to provide access to database tables via assetstores and file endpoints.",
   "homepage": "https://github.com/OpenGeoscience/database_assetstore",
@@ -11,7 +11,14 @@
     "type": "git",
     "url": "https://github.com/OpenGeoscience/database_assetstore.git"
   },
+  "peerDependencies": {
+    "@girder/core": "*"
+  },
   "dependencies": {},
   "devDependencies": {},
-  "scripts": {}
+  "scripts": {},
+  "girderPlugin": {
+    "name": "database_assetstore",
+    "main": "./main.js"
+  }
 }

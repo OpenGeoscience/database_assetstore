@@ -1,7 +1,7 @@
-import BrowserWidget from 'girder/views/widgets/BrowserWidget';
-import events from 'girder/events';
-import router from 'girder/router';
-import View from 'girder/views/View';
+import BrowserWidget from '@girder/core/views/widgets/BrowserWidget';
+import events from '@girder/core/events';
+import router from '@girder/core/router';
+import View from '@girder/core/views/View';
 
 import DbAssetstoreImportTemplate from '../templates/dbAssetstoreImport.pug';
 

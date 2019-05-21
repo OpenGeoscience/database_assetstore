@@ -1,14 +1,14 @@
 import _ from 'underscore';
 
-import UploadWidget from 'girder/views/widgets/UploadWidget';
-import { wrap } from 'girder/utilities/PluginUtils';
-import { restRequest } from 'girder/rest';
+import UploadWidget from '@girder/core/views/widgets/UploadWidget';
+import { wrap } from '@girder/core/utilities/PluginUtils';
+import { restRequest } from '@girder/core/rest';
 
 import UploadWidgetTemplate from '../templates/uploadWidget.pug';
 import TableSelectTemplate from '../templates/tableSelect.pug';
 import '../stylesheets/uploadWidget.styl';
 
-import 'girder/utilities/jquery/girderEnable';
+import '@girder/core/utilities/jquery/girderEnable';
 
 /**
  * Given the current control's URI value, get the list of known tables and

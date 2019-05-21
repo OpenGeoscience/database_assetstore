@@ -1,6 +1,6 @@
-import NewAssetstoreWidget from 'girder/views/widgets/NewAssetstoreWidget';
-import { AssetstoreType } from 'girder/constants';
-import { wrap } from 'girder/utilities/PluginUtils';
+import NewAssetstoreWidget from '@girder/core/views/widgets/NewAssetstoreWidget';
+import { AssetstoreType } from '@girder/core/constants';
+import { wrap } from '@girder/core/utilities/PluginUtils';
 
 import AssetstoreCreateTemplate from '../templates/dbAssetstoreCreate.pug';
 

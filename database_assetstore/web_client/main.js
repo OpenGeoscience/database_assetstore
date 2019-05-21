@@ -1,5 +1,5 @@
-import events from 'girder/events';
-import router from 'girder/router';
+import events from '@girder/core/events';
+import router from '@girder/core/router';
 
 import './routes';
 
@@ -10,7 +10,7 @@ import './views/EditAssetstoreWidget';
 import './views/NewAssetstoreWidget';
 import './views/UploadWidget';
 
-import { exposePluginConfig } from 'girder/utilities/PluginUtils';
+import { exposePluginConfig } from '@girder/core/utilities/PluginUtils';
 
 import ConfigView from './views/ConfigView';
 

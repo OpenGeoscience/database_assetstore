@@ -1,5 +1,5 @@
-import AssetstoreModel from 'girder/models/AssetstoreModel';
-import { restRequest } from 'girder/rest';
+import AssetstoreModel from '@girder/core/models/AssetstoreModel';
+import { restRequest } from '@girder/core/rest';
 
 /**
  * Extends the core assetstore model to add Database-specific functionality.

@@ -1,9 +1,9 @@
-import PluginConfigBreadcrumbWidget from 'girder/views/widgets/PluginConfigBreadcrumbWidget';
-import View from 'girder/views/View';
-import events from 'girder/events';
-import router from 'girder/router';
-import { restRequest } from 'girder/rest';
-import GroupCollection from 'girder/collections/GroupCollection';
+import PluginConfigBreadcrumbWidget from '@girder/core/views/widgets/PluginConfigBreadcrumbWidget';
+import View from '@girder/core/views/View';
+import events from '@girder/core/events';
+import router from '@girder/core/router';
+import { restRequest } from '@girder/core/rest';
+import GroupCollection from '@girder/core/collections/GroupCollection';
 
 import template from '../templates/configView.pug';
 import '../stylesheets/configView.styl';

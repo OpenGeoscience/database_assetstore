@@ -95,8 +95,7 @@ def createDatabaseLink(self, file, params):
     .errorResponse('Failed to connect to database.')
 )
 @boundHandler()
-@access.cookie
-@access.public
+@access.public(cookie=True)
 @loadmodel(model='file', map={'id': 'file'}, level=AccessType.READ)
 def getDatabaseFields(self, file, params):
     dbinfo = getDbInfoForFile(file)
@@ -218,8 +217,7 @@ def databaseRefresh(self, file, params):
     .errorResponse('Filter group badly formed.')
 )
 @boundHandler()
-@access.cookie
-@access.public
+@access.public(cookie=True)
 @loadmodel(model='file', map={'id': 'file'}, level=AccessType.READ)
 def databaseSelect(self, file, params):
     dbinfo = getDbInfoForFile(file)

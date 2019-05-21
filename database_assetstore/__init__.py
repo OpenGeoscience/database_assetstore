@@ -26,11 +26,51 @@ from girder.constants import AccessType, AssetstoreType
 from girder.models.assetstore import Assetstore
 from girder.models.file import File
 from girder.utility.assetstore_utilities import setAssetstoreAdapter
+from girder.plugin import getPlugin, GirderPlugin
 
 from . import assetstore
 from . import base
 from .rest import DatabaseAssetstoreResource, fileResourceRoutes
 
+
+class DatabaseAssetstorePlugin(GirderPlugin):
+    DISPLAY_NAME = 'Database Assetstore'
+    CLIENT_SOURCE_PATH = 'web_client'
+
+    def load(self, info):
+        """
+        Load the plugin into Girder.
+
+        :param info: a dictionary of plugin information.  The name key contains the
+                    name of the plugin according to Girder.
+        """
+        # plugin_name = info['name']
+        plugin_name = 'database_assetstore'
+        AssetstoreType.DATABASE = 'database'
+        setAssetstoreAdapter(AssetstoreType.DATABASE,
+                            assetstore.DatabaseAssetstoreAdapter)
+        events.bind('assetstore.update', 'database_assetstore', updateAssetstore)
+        events.bind('rest.post.assetstore.before', 'database_assetstore',
+                    createAssetstore)
+        events.bind('model.file.validate', 'database_assetstore', validateFile)
+        events.bind('model.setting.validate', 'database_assetstore',
+                    functools.partial(base.validateSettings, plugin_name=plugin_name))
+
+        (AssetstoreResource.createAssetstore.description
+            .param('dbtype', 'The database type (for Database type).',
+                required=False)
+            .param('dburi', 'The database URI (for Database type).',
+                required=False))
+
+        info['apiRoot'].database_assetstore = DatabaseAssetstoreResource()
+
+        fileResourceRoutes(info['apiRoot'].file)
+
+        File().exposeFields(level=AccessType.ADMIN, fields=base.DB_INFO_KEY)
+        File().exposeFields(level=AccessType.SITE_ADMIN, fields=base.DB_INFO_KEY)
+
+        # Make sure the user assetstore exists.
+        base._createUserAssetstore()
 
 @access.admin
 def createAssetstore(event):
@@ -85,38 +125,3 @@ def validateFile(event):
     :param event: the validation event.  info is the file document.
     """
     assetstore.validateFile(event.info)
-
-
-def load(info):
-    """
-    Load the plugin into Girder.
-
-    :param info: a dictionary of plugin information.  The name key contains the
-                 name of the plugin according to Girder.
-    """
-    plugin_name = info['name']
-    AssetstoreType.DATABASE = 'database'
-    setAssetstoreAdapter(AssetstoreType.DATABASE,
-                         assetstore.DatabaseAssetstoreAdapter)
-    events.bind('assetstore.update', 'database_assetstore', updateAssetstore)
-    events.bind('rest.post.assetstore.before', 'database_assetstore',
-                createAssetstore)
-    events.bind('model.file.validate', 'database_assetstore', validateFile)
-    events.bind('model.setting.validate', 'database_assetstore',
-                functools.partial(base.validateSettings, plugin_name=plugin_name))
-
-    (AssetstoreResource.createAssetstore.description
-        .param('dbtype', 'The database type (for Database type).',
-               required=False)
-        .param('dburi', 'The database URI (for Database type).',
-               required=False))
-
-    info['apiRoot'].database_assetstore = DatabaseAssetstoreResource()
-
-    fileResourceRoutes(info['apiRoot'].file)
-
-    File().exposeFields(level=AccessType.ADMIN, fields=base.DB_INFO_KEY)
-    File().exposeFields(level=AccessType.SITE_ADMIN, fields=base.DB_INFO_KEY)
-
-    # Make sure the user assetstore exists.
-    base._createUserAssetstore()

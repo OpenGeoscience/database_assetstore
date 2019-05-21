@@ -2,7 +2,8 @@ from bson.objectid import ObjectId
 import jsonschema
 
 from girder import logger as log
-from girder.constants import AssetstoreType, SettingKey
+from girder.constants import AssetstoreType
+from girder.settings import SettingKey
 from girder.exceptions import ValidationException
 from girder.models.assetstore import Assetstore
 from girder.utility import setting_utilities, toBool

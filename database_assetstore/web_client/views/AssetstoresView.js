@@ -1,8 +1,8 @@
 import _ from 'underscore';
 
-import AssetstoresView from 'girder/views/body/AssetstoresView';
-import { AssetstoreType } from 'girder/constants';
-import { wrap } from 'girder/utilities/PluginUtils';
+import AssetstoresView from '@girder/core/views/body/AssetstoresView';
+import { AssetstoreType } from '@girder/core/constants';
+import { wrap } from '@girder/core/utilities/PluginUtils';
 
 import AssetstoreInfoTemplate from '../templates/dbAssetstoreInfo.pug';
 import AssetstoreImportButtonTemplate from '../templates/dbAssetstoreImportButton.pug';

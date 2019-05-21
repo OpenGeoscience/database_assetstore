@@ -1,6 +1,6 @@
-import EditAssetstoreWidget from 'girder/views/widgets/EditAssetstoreWidget';
-import { AssetstoreType } from 'girder/constants';
-import { wrap } from 'girder/utilities/PluginUtils';
+import EditAssetstoreWidget from '@girder/core/views/widgets/EditAssetstoreWidget';
+import { AssetstoreType } from '@girder/core/constants';
+import { wrap } from '@girder/core/utilities/PluginUtils';
 
 import AssetstoreEditFieldsTemplate from '../templates/dbAssetstoreEditFields.pug';
 
