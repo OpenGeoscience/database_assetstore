@@ -3,3 +3,5 @@ node_modules
 _build
 .*.swp
 .*.swo
+.tox/
+girder_database_assetstore.egg-info/
