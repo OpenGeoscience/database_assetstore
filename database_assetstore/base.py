@@ -3,7 +3,6 @@ import jsonschema
 
 from girder import logger as log
 from girder.constants import AssetstoreType
-from girder.settings import SettingKey
 from girder.exceptions import ValidationException
 from girder.models.assetstore import Assetstore
 from girder.utility import setting_utilities, toBool
@@ -70,40 +69,3 @@ def _createUserAssetstore():
                 'dbtype': DB_ASSETSTORE_USER_TYPE
             }
         })
-
-
-def _removeUserAssetstore():
-    """
-    Remove the user assetstore if it exists.
-    """
-    store = Assetstore().load(DB_ASSETSTORE_ObjectId)
-    if store:
-        Assetstore().remove(store)
-
-
-def validateSettings(event, plugin_name=None):
-    """
-    Validate plugin-specific settings and prevent disabling this plugin if
-    there are any files in database assetstores.
-
-    :param plugin_name: the name of our plugin.
-    :param event: the validation event
-    """
-    key, val = event.info['key'], event.info['value']
-
-    # If we are validating the list of enabled plugins, and there are any
-    # database assetstores with files, do not allow the plugin to be disabled.
-    if (key == SettingKey.PLUGINS_ENABLED and plugin_name and
-            plugin_name not in val):
-        store = next((store for store in Assetstore().list()
-                      if store['type'] == AssetstoreType.DATABASE and
-                      store['hasFiles']), None)
-        if store:
-            val.append(plugin_name)
-            log.info('Won\'t disable %s because there are files in the %s assetstore' % (
-                plugin_name, store['name']))
-    if (key == SettingKey.PLUGINS_ENABLED and plugin_name):
-        if plugin_name not in val:
-            _removeUserAssetstore()
-        else:
-            _createUserAssetstore()

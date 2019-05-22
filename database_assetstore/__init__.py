@@ -44,7 +44,6 @@ class DatabaseAssetstorePlugin(GirderPlugin):
         :param info: a dictionary of plugin information.  The name key contains the
                     name of the plugin according to Girder.
         """
-        # plugin_name = info['name']
         plugin_name = 'database_assetstore'
         AssetstoreType.DATABASE = 'database'
         setAssetstoreAdapter(AssetstoreType.DATABASE,
@@ -53,8 +52,6 @@ class DatabaseAssetstorePlugin(GirderPlugin):
         events.bind('rest.post.assetstore.before', 'database_assetstore',
                     createAssetstore)
         events.bind('model.file.validate', 'database_assetstore', validateFile)
-        events.bind('model.setting.validate', 'database_assetstore',
-                    functools.partial(base.validateSettings, plugin_name=plugin_name))
 
         (AssetstoreResource.createAssetstore.description
             .param('dbtype', 'The database type (for Database type).',

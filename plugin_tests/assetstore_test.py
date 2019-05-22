@@ -23,7 +23,7 @@ import six
 from six.moves import urllib
 
 from girder import config
-from girder.constants import AssetstoreType, SettingKey
+from girder.constants import AssetstoreType
 from girder.exceptions import GirderException
 from girder.models.assetstore import Assetstore
 from girder.models.file import File
@@ -672,39 +672,6 @@ class AssetstoreTest(base.TestCase):
             self.assertIsNone(assetstore.validateFile({
                 DB_INFO_KEY: {'table': 'sample'},
                 'assetstoreId': DB_ASSETSTORE_ID}))
-
-    def testDisablingPluginWithActiveFiles(self):
-        from girder.plugins.database_assetstore.base import validateSettings
-        plugin_name = 'database_assetstore'
-        # Create assetstores
-        resp = self.request(path='/assetstore', method='POST', user=self.admin,
-                            params=self.dbParams)
-        self.assertStatusOk(resp)
-        assetstore1 = resp.json
-        event = (lambda: None)
-        event.info = {
-            'key': SettingKey.PLUGINS_ENABLED,
-            'value': []}
-        self.assertIsNone(validateSettings(event, plugin_name))
-        self.assertEqual(event.info['value'], [])
-        params = {
-            'parentId': str(self.publicFolder['_id']),
-            'parentType': 'folder',
-            'table': 'towns'
-        }
-        resp = self.request(
-            path='/database_assetstore/%s/import' % str(assetstore1['_id']),
-            method='PUT', user=self.admin, params=params)
-        self.assertStatusOk(resp)
-        self.assertIsNone(validateSettings(event, plugin_name))
-        self.assertEqual(event.info['value'], [plugin_name])
-        townItem = list(Item().textSearch('towns', user=self.admin, limit=1))[0]
-        resp = self.request(path='/item/%s' % str(townItem['_id']),
-                            method='DELETE', user=self.admin)
-        self.assertStatusOk(resp)
-        event.info['value'] = []
-        self.assertIsNone(validateSettings(event, plugin_name))
-        self.assertEqual(event.info['value'], [])
 
     def testUnicodeInDownload(self):
         # Create assetstore
