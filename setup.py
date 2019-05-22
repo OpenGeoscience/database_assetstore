@@ -34,14 +34,14 @@ for key in extras_require:
 extras_require['all'] = list(all_extras)
 
 setup(
-    name='database_assetstore',
+    name='girder-database-assetstore',
     version=pkginfo['version'],
     description=pkginfo['description'],
     long_description=readme,
     long_description_content_type='text/x-rst; charset=UTF-8',
     url='https://github.com/OpenGeoscience/database_assetstore',
-    author='Kitware, Inc.',
-    author_email='kitware@kitware.com',
+    maintainer='Kitware, Inc.',
+    maintainer_email='kitware@kitware.com',
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Intended Audience :: Developers',
@@ -63,7 +63,7 @@ setup(
     test_suite='plugin_tests',
     entry_points={
         'girder.plugin': [
-            'database-assetstore = database_assetstore:DatabaseAssetstorePlugin'
+            'database_assetstore = database_assetstore:DatabaseAssetstorePlugin'
         ]
     }
 )
