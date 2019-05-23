@@ -56,9 +56,11 @@ before_install:
 install:
     - cd $girder_path
     - pip install -U -r requirements-dev.txt -e .
-    - girder-install plugin --symlink --dev $main_path
+    # - girder-install plugin --symlink --dev $main_path
     - pip install -e $main_path[all]
-    - girder-install web --plugins=database_assetstore --dev
+    # - girder-install web --plugins=database_assetstore --dev
+    - girder build
+
 
 before_script:
     - psql -U postgres -c 'CREATE EXTENSION postgis;'
