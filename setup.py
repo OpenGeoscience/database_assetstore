@@ -54,6 +54,7 @@ setup(
         'Programming Language :: Python :: 3.6',
     ],
     keywords='girder database assetstore',
+    include_package_data=True,
     packages=find_packages(exclude=['plugin_tests']),
     install_requires=['sqlalchemy>=1.1.11'],
     extras_require=extras_require,
